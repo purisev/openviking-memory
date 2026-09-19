@@ -86,6 +86,18 @@ codex            # then run /hooks inside Codex to review & approve the hooks
 
 This path works out of the box against an unauthenticated local OpenViking at `http://127.0.0.1:1933`. For remote/cloud servers, create `~/.openviking/ovcli.conf` with `url`, `api_key`, and optional `account` / `user`; the proxy reads it when Codex starts.
 
+### B2. Codex install from the `purisev` marketplace
+
+This repository is published for Codex through the same catalog as for Claude Code:
+
+```bash
+codex plugin marketplace add purisev/agent-plugins
+codex plugin add openviking-memory@purisev
+codex            # approve the six lifecycle hooks once in /hooks
+```
+
+Codex discovers `hooks/hooks.json`, expands `${CLAUDE_PLUGIN_ROOT}` in the commands, and starts the MCP proxy from `.mcp.json`. One `~/.openviking/ovcli.conf` serves Codex and Claude Code alike.
+
 ### C. Claude Code marketplace install
 
 The plugin is published in the `purisev` marketplace ([purisev/agent-plugins](https://github.com/purisev/agent-plugins)):

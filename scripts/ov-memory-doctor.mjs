@@ -59,16 +59,30 @@ import { describeInputFilters } from "./shared/input-filters.mjs";
 import { resolveEffectivePeerId } from "./shared/workspace-peer.mjs";
 
 const PLUGIN_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
-const PLUGIN_ID = "openviking-memory@personal";
+
 const PLUGIN_NAME = "openviking-memory";
-const MARKETPLACE = "personal";
+const PUBLISHED_MARKETPLACE = "purisev";
 const LEGACY_MARKETPLACE = "openviking-plugins-local";
-const CODEX_DIR = join(homedir(), ".codex");
+const CODEX_DIR = process.env.CODEX_HOME || join(homedir(), ".codex");
 const CODEX_CONFIG = process.env.CODEX_CONFIG_FILE || join(CODEX_DIR, "config.toml");
+const MARKETPLACE = installedMarketplace(readToml(CODEX_CONFIG)) || PUBLISHED_MARKETPLACE;
+const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE}`;
 const CACHE_DIR = join(CODEX_DIR, "plugins", "cache", MARKETPLACE, PLUGIN_NAME);
-const HOOK_EVENTS = ["session_start", "user_prompt_submit", "stop", "session_end", "pre_compact"];
+// <event>:<group>:<hook> positions in hooks/hooks.json, as Codex keys its trust records.
+const HOOK_KEYS = ["session_start:0:0", "session_start:1:0", "user_prompt_submit:0:0", "stop:0:0", "session_end:0:0", "pre_compact:0:0"];
 const RC_MARKERS = ["# >>> openviking-codex-plugin >>>", "codex-plugin.rc.sh"];
 const REQUIRED_PLUGIN_FILES = [".codex-plugin/plugin.json", "hooks/hooks.json", ".mcp.json", "servers/mcp-proxy.mjs", "scripts/config.mjs", "scripts/auto-recall.mjs", "scripts/auto-capture.mjs", "scripts/session-end.mjs", "scripts/ov-session.mjs"];
+
+/**
+ * The marketplace config.toml says this plugin is installed from. A machine may
+ * have it from a personal or local marketplace instead of the published one.
+ */
+export function installedMarketplace(toml) {
+  const prefix = `plugins."${PLUGIN_NAME}@`;
+  const sections = Object.keys(toml || {}).filter((name) => name.startsWith(prefix) && name.endsWith('"'));
+  const enabled = sections.find((name) => toml[name]?.enabled !== false) || sections[0];
+  return enabled ? enabled.slice(prefix.length, -1) : "";
+}
 
 function parseArgs(argv) {
   const opts = { json: false, offline: false, harness: "", timeoutMs: 5000, color: process.stdout.isTTY && !process.env.NO_COLOR };
@@ -249,7 +263,7 @@ function checkInstall(report, { codexOnPath }) {
   if (cacheVersions.length) {
     report.info(`plugin cache ${homeShort(CACHE_DIR)}: ${cacheVersions.join(", ")}`);
     const newest = cacheVersions[cacheVersions.length - 1];
-    if (!inCache && newest !== version) report.warn(`cached plugin ${newest} differs from this copy (${version})`, "Codex runs hooks from the cache", "re-run the installer or `codex plugin marketplace upgrade openviking` and restart Codex");
+    if (!inCache && newest !== version) report.warn(`cached plugin ${newest} differs from this copy (${version})`, "Codex runs hooks from the cache", `run codex plugin marketplace upgrade ${MARKETPLACE}, then codex plugin add ${PLUGIN_ID}, and restart Codex`);
   }
 
   // codex CLI view
@@ -261,7 +275,7 @@ function checkInstall(report, { codexOnPath }) {
       const mine = rows.filter((r) => r?.pluginId === PLUGIN_ID);
       const others = rows.filter((r) => r?.pluginId !== PLUGIN_ID && r?.name === PLUGIN_NAME && r?.installed);
       if (!mine.length) report.fail(`codex plugin list does not show ${PLUGIN_ID}`, others.length ? `found: ${others.map((r) => r.pluginId).join(", ")}` : "",
-        "bash <(curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/examples/memory-plugin-shared/install.sh) --harness codex");
+        `codex plugin marketplace add purisev/agent-plugins && codex plugin add ${PLUGIN_NAME}@${PUBLISHED_MARKETPLACE}`);
       else {
         listed = mine[0];
         const path = listed.source?.path || "";
@@ -330,15 +344,15 @@ function checkInstall(report, { codexOnPath }) {
     const trusted = [];
     const untrusted = [];
     const disabled = [];
-    for (const event of HOOK_EVENTS) {
-      const section = toml[`hooks.state."${PLUGIN_ID}:hooks/hooks.json:${event}:0:0"`];
-      if (!section) untrusted.push(event);
-      else if (section.enabled === false) disabled.push(event);
-      else trusted.push(event);
+    for (const key of HOOK_KEYS) {
+      const section = toml[`hooks.state."${PLUGIN_ID}:hooks/hooks.json:${key}"`];
+      if (!section) untrusted.push(key);
+      else if (section.enabled === false) disabled.push(key);
+      else trusted.push(key);
     }
     if (disabled.length) report.fail(`hooks disabled in [hooks.state]: ${disabled.join(", ")}`, "", `remove enabled = false from those [hooks.state] sections in ${homeShort(CODEX_CONFIG)}`);
     if (untrusted.length) report.info(`hooks without a trust record yet: ${untrusted.join(", ")} (Codex records trusted_hash the first time a hook is approved; a changed hooks.json — including a newly added event such as session_end — needs re-approval)`);
-    if (trusted.length === HOOK_EVENTS.length) report.ok(`all ${HOOK_EVENTS.length} hooks have trust records in config.toml`);
+    if (trusted.length === HOOK_KEYS.length) report.ok(`all ${HOOK_KEYS.length} hooks have trust records in config.toml`);
     const legacyKeys = Object.keys(toml).filter((k) => k.includes(LEGACY_MARKETPLACE));
     if (legacyKeys.length) report.info(`config.toml still has ${legacyKeys.length} section(s) for the legacy id ${LEGACY_MARKETPLACE} (harmless)`);
   }
