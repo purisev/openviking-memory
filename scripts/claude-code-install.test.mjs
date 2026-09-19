@@ -6,9 +6,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  adoptPluginOptions,
   assessInstalledPlugins,
-  detectHarness,
-  HARNESSES,
   readInstalledPlugins,
   settingsDisablingHooks,
   unresolvableHookCommands,
@@ -20,23 +19,6 @@ function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(value));
 }
-
-test("detectHarness: an explicit choice wins over location and environment", () => {
-  const host = detectHarness({ explicit: "codex", pluginRoot: "/h/.claude/plugins/cache/x", env: { CLAUDECODE: "1" }, home: "/h" });
-  assert.equal(host, HARNESSES.codex);
-  assert.equal(detectHarness({ explicit: "claude_code", env: {}, home: "/h" }), HARNESSES.claudeCode);
-});
-
-test("detectHarness: a host's plugin cache decides before the environment", () => {
-  assert.equal(detectHarness({ pluginRoot: "/h/.claude/plugins/cache/m/p/1.0", env: {}, home: "/h" }), HARNESSES.claudeCode);
-  assert.equal(detectHarness({ pluginRoot: "/h/.codex/plugins/cache/m/p/1.0", env: { CLAUDECODE: "1" }, home: "/h" }), HARNESSES.codex);
-  assert.equal(detectHarness({ pluginRoot: "/cfg/plugins/cache/m/p", env: { CLAUDE_CONFIG_DIR: "/cfg" }, home: "/h" }), HARNESSES.claudeCode);
-});
-
-test("detectHarness: a checkout follows the environment and defaults to Codex", () => {
-  assert.equal(detectHarness({ pluginRoot: "/src/plugin", env: { CLAUDECODE: "1" }, home: "/h" }), HARNESSES.claudeCode);
-  assert.equal(detectHarness({ pluginRoot: "/src/plugin", env: {}, home: "/h" }), HARNESSES.codex);
-});
 
 test("unresolvableHookCommands: flags commands without ${CLAUDE_PLUGIN_ROOT}", () => {
   const config = {
@@ -96,6 +78,12 @@ test("assessInstalledPlugins: disabled, vanished and stale installs are reported
   assert.ok(stale.some((f) => f.level === "warn" && /differs from this copy/.test(f.message)));
 });
 
+test("assessInstalledPlugins: errors Claude Code attaches to the plugin are failures", () => {
+  const findings = assessInstalledPlugins([{ id: "openviking-memory@m", version: "0.9.0", enabled: true, errors: ["Dependency \"x@m\" is not installed"] }], { version: "0.9.0" });
+  const failure = findings.find((f) => f.level === "fail");
+  assert.match(failure.detail, /is not installed/);
+});
+
 test("assessInstalledPlugins: two enabled copies would fire hooks twice", () => {
   const findings = assessInstalledPlugins([
     { id: "openviking-memory@a", version: "0.8.3", enabled: true },
@@ -111,4 +99,16 @@ test("settingsDisablingHooks: finds disableAllHooks in user and project settings
   writeJson(join(configDir, "settings.json"), { disableAllHooks: false });
   writeJson(join(cwd, ".claude", "settings.local.json"), { disableAllHooks: true });
   assert.deepEqual(settingsDisablingHooks(configDir, cwd), [join(cwd, ".claude", "settings.local.json")]);
+});
+
+test("adoptPluginOptions: fills unset option variables from Claude Code settings", () => {
+  const configDir = mkdtempSync(join(tmpdir(), "ov-claude-"));
+  writeJson(join(configDir, "settings.json"), {
+    pluginConfigs: { "openviking-memory@purisev": { options: { url: "https://ov.example.com", account: "acme", user: "" } } },
+  });
+  const env = { CLAUDE_PLUGIN_OPTION_ACCOUNT: "from-host" };
+  assert.deepEqual(adoptPluginOptions(configDir, env), ["url"]);
+  assert.equal(env.CLAUDE_PLUGIN_OPTION_URL, "https://ov.example.com");
+  assert.equal(env.CLAUDE_PLUGIN_OPTION_ACCOUNT, "from-host");
+  assert.deepEqual(adoptPluginOptions(mkdtempSync(join(tmpdir(), "ov-claude-")), {}), []);
 });

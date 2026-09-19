@@ -41,8 +41,8 @@ Memory and long-term extraction. No server/model changes were made.
   another extraction job is running. Later writes/lifecycle commits retry.
 - Already queued jobs retain their original policy snapshot.
 - The session batching patch was validated under Codex. Claude Code runs the
-  same hook scripts through `.claude-plugin/` and reads the same
-  `plugin.codex` settings.
+  same hook scripts through `.claude-plugin/` and reads `plugin.claude_code`;
+  put the settings above directly under `plugin` to apply them to both hosts.
   The independent wiki plugin and shared/private wiki rules are unchanged.
 
 ## Validation and deployment

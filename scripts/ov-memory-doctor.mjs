@@ -9,7 +9,7 @@
  * commands), the client config (which file won, is the JSON valid,
  * what the key claims) and the connection to the server (reachability, auth,
  * tenant-data access, /mcp), plus the runtime evidence the hooks leave in
- * ~/.openviking/codex-plugin-state. When the server runs on this machine
+ * ~/.openviking/hook-state. When the server runs on this machine
  * (loopback url) it also checks
  * the port, plugin-only keys in ov.conf and `GET /ready`. Provider-level validation stays with `openviking-server doctor`.
  *
@@ -26,9 +26,10 @@ import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { checkClaudeCodeEnvironment, checkClaudeCodeInstall, detectHarness, HARNESSES, parseHarness } from "./claude-code-install.mjs";
+import { adoptPluginOptions, checkClaudeCodeEnvironment, checkClaudeCodeInstall } from "./claude-code-install.mjs";
+import { claudeConfigDir, detectHarness, HARNESSES, parseHarness } from "./harness.mjs";
 import { loadConfig } from "./config.mjs";
-import { getStateDir } from "./session-state.mjs";
+import { getStateDir, hookEnv } from "./session-state.mjs";
 import {
   assessProbes,
   checkServerHealth,
@@ -364,27 +365,34 @@ function tryJsonText(text) {
   }
 }
 
-function credentialSources(cfg, cliConf, ovConf) {
+function credentialSources(cfg, cliConf, ovConf, host) {
   const env = process.env;
   const cliShort = homeShort(cliConf.path);
   const ovShort = homeShort(ovConf.path);
   const cli = cliConf.ok ? cliConf.data : {};
   const ov = ovConf.ok ? ovConf.data : {};
-  const cx = ov.codex || {};
+  const cx = ov[host.settingsKey] || {};
   const server = ov.server || {};
   const cliMode = cfg.credentialSource === "ovcli";
   const envUrl = env.OPENVIKING_URL || env.OPENVIKING_BASE_URL;
-  const url = (!cliMode && envUrl) ? "env" : cli.url ? cliShort : server.url ? ovShort : (server.host || server.port) ? `${ovShort} server.host/port` : "default (http://127.0.0.1:1933)";
+  const optionLabel = "Claude Code plugin option";
+  const url = (!cliMode && envUrl) ? "env" : (!cliMode && env.CLAUDE_PLUGIN_OPTION_URL) ? optionLabel : cli.url ? cliShort : server.url ? ovShort : (server.host || server.port) ? `${ovShort} server.host/port` : "default (http://127.0.0.1:1933)";
   const apiKey = cliMode
     ? (cli.api_key ? cliShort : "(none — ovcli.conf mode ignores env and ov.conf)")
-    : env.OPENVIKING_BEARER_TOKEN ? "env OPENVIKING_BEARER_TOKEN" : env.OPENVIKING_API_KEY ? "env OPENVIKING_API_KEY" : cli.api_key ? cliShort : cx.apiKey ? `${ovShort} codex.apiKey` : server.root_api_key ? `${ovShort} server.root_api_key` : "(none)";
-  const account = (!cliMode && env.OPENVIKING_ACCOUNT) ? "env" : (cli.account || cli.account_id) ? cliShort : (!cliMode && cx.accountId) ? `${ovShort} codex.accountId` : "(unset)";
-  const user = (!cliMode && env.OPENVIKING_USER) ? "env" : (cli.user || cli.user_id) ? cliShort : (!cliMode && cx.userId) ? `${ovShort} codex.userId` : "(unset)";
+    : env.OPENVIKING_BEARER_TOKEN ? "env OPENVIKING_BEARER_TOKEN" : env.OPENVIKING_API_KEY ? "env OPENVIKING_API_KEY" : env.CLAUDE_PLUGIN_OPTION_API_KEY ? optionLabel : cli.api_key ? cliShort : cx.apiKey ? `${ovShort} ${host.settingsKey}.apiKey` : server.root_api_key ? `${ovShort} server.root_api_key` : "(none)";
+  const account = (!cliMode && env.OPENVIKING_ACCOUNT) ? "env" : (cli.account || cli.account_id) ? cliShort : (!cliMode && cx.accountId) ? `${ovShort} ${host.settingsKey}.accountId` : "(unset)";
+  const user = (!cliMode && env.OPENVIKING_USER) ? "env" : (cli.user || cli.user_id) ? cliShort : (!cliMode && cx.userId) ? `${ovShort} ${host.settingsKey}.userId` : "(unset)";
   return { url, apiKey, account, user };
 }
 
-function checkConfig(report, cfg, host) {
+function checkConfig(report, cfg, host, adoptedOptions = []) {
   report.section("Configuration");
+  if (adoptedOptions.length) {
+    report.info(
+      `Claude Code plugin options in use: ${adoptedOptions.join(", ")}`,
+      "read from Claude Code's settings; an API key entered at the same prompt is kept in Claude Code's credential store and reaches only hooks and the MCP server, so without OPENVIKING_API_KEY in this shell the authenticated checks below run without it",
+    );
+  }
   const expand = (p) => (p ? resolvePath(p.replace(/^~(?=$|\/)/, homedir())) : p);
   const cliPath = expand(process.env.OPENVIKING_CLI_CONFIG_FILE || join(homedir(), ".openviking", "ovcli.conf"));
   const ovPath = expand(process.env.OPENVIKING_CONFIG_FILE || join(homedir(), ".openviking", "ov.conf"));
@@ -405,9 +413,10 @@ function checkConfig(report, cfg, host) {
         for (const { key, suggestion } of unknownPluginKeys(conf.data.plugin)) {
           report.warn(`ovcli.conf ${key} is not a knob any plugin reads`, "", suggestion ? `did you mean ${suggestion}?` : "remove it, or check the plugin README for the knob you meant");
         }
-        if (conf.data.plugin?.claude_code && !conf.data.plugin?.codex) report.info("ovcli.conf plugin.claude_code settings are not read by this plugin under either host (use plugin.codex)");
+        const otherKey = Object.values(HARNESSES).map((h) => h.settingsKey).find((key) => key !== host.settingsKey);
+        if (conf.data.plugin?.[otherKey] && !conf.data.plugin?.[host.settingsKey]) report.info(`ovcli.conf plugin.${otherKey} settings do not apply to ${host.label} (use plugin.${host.settingsKey}, or plugin.* for both hosts)`);
       }
-      if (label === "ov.conf" && conf.data.codex) report.info("ov.conf has a legacy codex block (still honoured; prefer ovcli.conf plugin.codex or env vars)");
+      if (label === "ov.conf" && conf.data[host.settingsKey]) report.info(`ov.conf has a ${host.settingsKey} block (still honoured; prefer ovcli.conf plugin.${host.settingsKey} or env vars)`);
     }
   }
   if (!cliConf.ok && !ovConf.ok && !(process.env.OPENVIKING_URL || process.env.OPENVIKING_BASE_URL)) {
@@ -419,7 +428,7 @@ function checkConfig(report, cfg, host) {
   report.info(`credential source: ${cfg.credentialSource} — ${modeText}${modeEnv ? ` (OPENVIKING_CREDENTIAL_SOURCE=${modeEnv})` : ""}`);
   if (modeEnv && !/^(env|environment|cli|ovcli|file|config|auto)$/i.test(modeEnv)) report.warn(`OPENVIKING_CREDENTIAL_SOURCE=${modeEnv} is not a recognised value`, "valid: env, cli (ovcli/file/config), auto", "fix or unset it");
 
-  const src = credentialSources(cfg, cliConf, ovConf);
+  const src = credentialSources(cfg, cliConf, ovConf, host);
   report.info(`url      ${cfg.baseUrl}  ← ${src.url}`);
   for (const p of lintBaseUrl(cfg.baseUrl)) report[p.level](p.message, "", p.fix);
   if (src.url.startsWith("default")) report.warn("no url configured — using the built-in default http://127.0.0.1:1933", "only right when the server runs on this machine", "set url in ovcli.conf or OPENVIKING_URL");
@@ -468,12 +477,12 @@ function checkConfig(report, cfg, host) {
 
   const toggles = [`auto-inject ${cfg.noAutoInject ? "OFF" : "on"}`, `auto-recall ${cfg.autoRecall ? "on" : "OFF"}`, `auto-capture ${cfg.autoCapture ? "on" : "OFF"}`, `commit on compact ${cfg.autoCommitOnCompact ? "on" : "OFF"}`, `recall compress ${cfg.recallCompress ? "on" : "off"}`, `write path ${cfg.writePathAsync ? "async" : "sync"}`];
   report.info(`toggles  ${toggles.join(", ")}`);
-  if (!cfg.autoRecall || !cfg.autoCapture || cfg.noAutoInject) report.warn("one or more injection paths are switched off", toggles.join(", "), "check OPENVIKING_AUTO_RECALL / OPENVIKING_AUTO_CAPTURE / OPENVIKING_NO_AUTO_INJECT and ovcli.conf plugin.codex");
+  if (!cfg.autoRecall || !cfg.autoCapture || cfg.noAutoInject) report.warn("one or more injection paths are switched off", toggles.join(", "), `check OPENVIKING_AUTO_RECALL / OPENVIKING_AUTO_CAPTURE / OPENVIKING_NO_AUTO_INJECT and ovcli.conf plugin.${host.settingsKey}`);
   for (const filters of describeInputFilters(cfg)) {
     if (!filters.total) continue;
     report.info(`${filters.label}  ${filters.summary}`);
     for (const e of filters.errors) {
-      const where = `${filters.env} or ovcli.conf plugin.codex.${filters.key}`;
+      const where = `${filters.env} or ovcli.conf plugin.${host.settingsKey}.${filters.key}`;
       report.warn(
         `${filters.key}[${e.index}]: ${e.message}`,
         e.source ? `rule: ${e.source}` : "this rule is skipped, the rest still apply",
@@ -524,14 +533,14 @@ function checkActivity(report, cfg, connection, host) {
       return { name: n, mtimeMs: st.mtimeMs, data: tryJson(path) };
     }).sort((a, b) => b.mtimeMs - a.mtimeMs);
   } catch {
-    report.info(`no session state dir at ${homeShort(stateDir)} yet — no ${host.label} hook has run (or OPENVIKING_CODEX_STATE_DIR points elsewhere)`);
+    report.info(`no session state dir at ${homeShort(stateDir)} yet — no ${host.label} hook has run (or OPENVIKING_HOOK_STATE_DIR points elsewhere)`);
   }
   if (states.length) {
     const newest = states[0];
     const d = newest.data || {};
     report.info(`${states.length} session state file(s) in ${homeShort(stateDir)}; newest ${fmtAge(newest.mtimeMs)}: ${d.ovSessionId || "(committed)"} captured ${d.capturedTurnCount ?? "?"} turns`);
     if (states.length > 3 && states.every((s) => (s.data?.capturedTurnCount ?? 0) === 0)) report.warn("no session has ever captured a turn", "the Stop hook runs but never appends messages", "check the Connection section; enable OPENVIKING_DEBUG=1 and read the hook log");
-    const idleTtl = Number(process.env.OPENVIKING_CODEX_IDLE_TTL_MS) || 30 * 60 * 1000;
+    const idleTtl = Number(hookEnv("IDLE_TTL_MS")) || 30 * 60 * 1000;
     // Markers are `<id>.ended.<ts>`; the bare `<id>.ended` is a pre-0.8.1 leftover.
     const ended = new Set(
       readdirSync(stateDir)
@@ -562,8 +571,6 @@ function checkActivity(report, cfg, connection, host) {
     }
     if (log.recentErrors.length) report.warn(`hook errors in the last day of logging (${log.recentErrors.length} shown)`, log.recentErrors.map((e) => `${e.ts} ${e.hook}/${e.stage}: ${e.message}`).join("\n"));
   }
-  const ccLog = join(homedir(), ".openviking", "logs", "cc-hooks.log");
-  if (existsPath(ccLog) && !log.exists) report.info("~/.openviking/logs/cc-hooks.log belongs to the upstream Claude Code plugin, not this one");
   if (connection?.summary?.reachable === false) report.info("state files are kept when commits fail, so they replay once the server is back");
 }
 
@@ -576,8 +583,9 @@ async function main() {
   const envInfo = checkEnvironment(report, host);
   if (host === HARNESSES.claudeCode) checkClaudeCodeInstall(report, { pluginRoot: PLUGIN_ROOT, ...envInfo });
   else checkInstall(report, envInfo);
+  const adoptedOptions = host === HARNESSES.claudeCode ? adoptPluginOptions(claudeConfigDir()) : [];
   const cfg = loadConfig();
-  const configInfo = checkConfig(report, cfg, host);
+  const configInfo = checkConfig(report, cfg, host, adoptedOptions);
   const workspace = checkWorkspace(report);
   const connection = await checkConnection(report, cfg, configInfo, opts);
   const serverHealth = await checkServerHealth(report, { baseUrl: cfg.baseUrl, ovConf: configInfo.ovConf, health: connection?.probes?.health, offline: opts.offline, timeoutMs: opts.timeoutMs });

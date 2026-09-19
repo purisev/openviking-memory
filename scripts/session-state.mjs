@@ -18,19 +18,54 @@
  *     all persist the whole state object. A stale lock is taken over in place,
  *     by claiming the `owner` file inside it.
  *
- * State directory: $OPENVIKING_CODEX_STATE_DIR or ~/.openviking/codex-plugin-state
+ * State directory: $OPENVIKING_HOOK_STATE_DIR or ~/.openviking/hook-state, shared
+ * by every host. An installation that already keeps its state in
+ * ~/.openviking/codex-plugin-state stays readable there until SessionStart
+ * adopts it under the shared name.
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rename, rm, rmdir, stat, utimes, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { deriveCodexSessionId } from "./shared/session-model.mjs";
 
-const DEFAULT_STATE_DIR = join(homedir(), ".openviking", "codex-plugin-state");
+const STATE_DIR_NAME = "hook-state";
+const CODEX_NAMED_STATE_DIR = "codex-plugin-state";
 
-export function getStateDir() {
-  return process.env.OPENVIKING_CODEX_STATE_DIR || DEFAULT_STATE_DIR;
+/** `OPENVIKING_HOOK_<name>`, else the Codex-named spelling of the same knob. */
+export function hookEnv(name, env = process.env) {
+  return env[`OPENVIKING_HOOK_${name}`] ?? env[`OPENVIKING_CODEX_${name}`];
+}
+
+export function getStateDir({ env = process.env, home = homedir() } = {}) {
+  const configured = hookEnv("STATE_DIR", env);
+  if (configured) return configured;
+  const shared = join(home, ".openviking", STATE_DIR_NAME);
+  const codexNamed = join(home, ".openviking", CODEX_NAMED_STATE_DIR);
+  return existsSync(shared) || !existsSync(codexNamed) ? shared : codexNamed;
+}
+
+/**
+ * Move a Codex-named state directory to the shared name. Returns whether it
+ * moved. A configured directory is left alone, and so is an installation that
+ * already has the shared one: merging two directories could clobber a live
+ * session's state.
+ */
+export async function adoptStateDir({ env = process.env, home = homedir() } = {}) {
+  if (hookEnv("STATE_DIR", env)) return false;
+  const shared = join(home, ".openviking", STATE_DIR_NAME);
+  const codexNamed = join(home, ".openviking", CODEX_NAMED_STATE_DIR);
+  if (existsSync(shared) || !existsSync(codexNamed)) return false;
+  try {
+    await rename(codexNamed, shared);
+    return true;
+  } catch {
+    // Another SessionStart won the race, or the directory is on a filesystem
+    // that refuses the move; getStateDir() keeps resolving whichever exists.
+    return false;
+  }
 }
 
 function safeId(codexSessionId) {

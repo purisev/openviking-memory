@@ -5,9 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 
 const STATE_DIR = await mkdtemp(join(tmpdir(), "ov-session-state-"));
-process.env.OPENVIKING_CODEX_STATE_DIR = STATE_DIR;
+process.env.OPENVIKING_HOOK_STATE_DIR = STATE_DIR;
 
-const { clearEnded, markEnded, readEndedAt, withSessionLock } = await import("./session-state.mjs");
+const { adoptStateDir, clearEnded, getStateDir, hookEnv, markEnded, readEndedAt, withSessionLock } = await import("./session-state.mjs");
 
 async function exists(path) {
   try { await stat(path); return true; } catch { return false; }
@@ -117,4 +117,39 @@ test("markEnded / readEndedAt still honour a pre-0.8.1 bare marker", async () =>
 
 test.after(async () => {
   await rm(STATE_DIR, { recursive: true, force: true });
+});
+
+test("hookEnv prefers OPENVIKING_HOOK_* and still reads the Codex-named spelling", () => {
+  assert.equal(hookEnv("IDLE_TTL_MS", { OPENVIKING_HOOK_IDLE_TTL_MS: "1", OPENVIKING_CODEX_IDLE_TTL_MS: "2" }), "1");
+  assert.equal(hookEnv("IDLE_TTL_MS", { OPENVIKING_CODEX_IDLE_TTL_MS: "2" }), "2");
+  assert.equal(hookEnv("IDLE_TTL_MS", {}), undefined);
+});
+
+test("getStateDir: configured directory, else the shared one, else an existing Codex-named one", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ov-home-"));
+  const shared = join(home, ".openviking", "hook-state");
+  const codexNamed = join(home, ".openviking", "codex-plugin-state");
+  assert.equal(getStateDir({ env: { OPENVIKING_HOOK_STATE_DIR: "/x" }, home }), "/x");
+  assert.equal(getStateDir({ env: {}, home }), shared);
+  await mkdir(codexNamed, { recursive: true });
+  assert.equal(getStateDir({ env: {}, home }), codexNamed);
+  await mkdir(shared, { recursive: true });
+  assert.equal(getStateDir({ env: {}, home }), shared);
+});
+
+test("adoptStateDir moves a Codex-named directory once and never merges into an existing one", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ov-home-"));
+  const shared = join(home, ".openviking", "hook-state");
+  const codexNamed = join(home, ".openviking", "codex-plugin-state");
+  assert.equal(await adoptStateDir({ env: {}, home }), false);
+
+  await mkdir(codexNamed, { recursive: true });
+  await writeFile(join(codexNamed, "s1.json"), "{}");
+  assert.equal(await adoptStateDir({ env: { OPENVIKING_HOOK_STATE_DIR: "/x" }, home }), false);
+  assert.equal(await adoptStateDir({ env: {}, home }), true);
+  assert.equal(await readFile(join(shared, "s1.json"), "utf-8"), "{}");
+  assert.equal(getStateDir({ env: {}, home }), shared);
+
+  await mkdir(codexNamed, { recursive: true });
+  assert.equal(await adoptStateDir({ env: {}, home }), false);
 });

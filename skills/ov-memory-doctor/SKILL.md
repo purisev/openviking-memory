@@ -22,7 +22,7 @@ wrong on a user's machine, each silently:
   and `[features] hooks` (or legacy `plugin_hooks`) in `~/.codex/config.toml`, per-hook trust
   records, the stdio MCP proxy. Under Claude Code: the plugin registry
   (`claude plugin list`), `enabledPlugins`, `disableAllHooks`, and hook commands
-  rooted at `${CLAUDE_PLUGIN_ROOT}`. When these are wrong, hooks never run and
+  rooted at the `CLAUDE_PLUGIN_ROOT` token. When these are wrong, hooks never run and
   nothing is logged anywhere.
 - **Configuration** — `~/.openviking/ovcli.conf`, `~/.openviking/ov.conf` and
   `OPENVIKING_*` environment variables. A malformed file reads as "no config"
@@ -96,12 +96,14 @@ Work top-down; fix the first ✗ and rerun before chasing the next.
 | `[plugins."…"] enabled = false` / `installed but disabled` | Plugin switched off in config.toml | Set `enabled = true`, restart Codex. |
 | `hooks disabled in [hooks.state]` | A hook was declined at the trust prompt | Remove `enabled = false` from that `[hooks.state."openviking-memory@openviking:hooks/hooks.json:<event>:0:0"]` section; approve the hook again. |
 | `hooks without a trust record yet` | Codex has not yet approved those hooks (fresh install or `hooks.json` changed on update) | Start a Codex session and accept the hook prompt; nothing is wrong. |
-| `Claude Code has no installed openviking-memory plugin` | Not installed; only `claude --plugin-dir` sessions load it | `claude plugin marketplace add purisev/openviking-memory`, then `claude plugin install openviking-memory@openviking-memory`. |
+| `Claude Code has no installed openviking-memory plugin` | Not installed; only `claude --plugin-dir` sessions load it | `claude plugin marketplace add purisev/agent-plugins`, then `claude plugin install openviking-memory@purisev`. |
 | `… is installed but disabled` (Claude Code) | Plugin switched off in `enabledPlugins` | `claude plugin enable <id>`, restart Claude Code. |
 | `installed plugin X differs from this copy` (Claude Code) | The doctor was run from a checkout while Claude Code runs the installed version | `claude plugin update <id>`, or rerun from the installed copy (Step 1). |
 | `more than one copy of openviking-memory is enabled` | Two marketplaces or scopes provide the plugin; every hook fires twice | Disable the stale one. |
+| `Claude Code reports a problem with …` | Claude Code disabled or degraded the plugin, for example over an unsatisfied plugin dependency | Follow the quoted error; the Errors tab of `/plugin` shows the same text. |
+| `Claude Code plugin options in use: …` (info) | The connection was entered at the plugin's prompts; the doctor reads the non-sensitive answers from Claude Code's settings and cannot read the API key | For authenticated checks run the doctor with `OPENVIKING_API_KEY` set in that shell. A 401 without it says nothing about the hooks. |
 | `disableAllHooks is set` | A Claude Code settings file silences every hook | Remove `disableAllHooks` from the listed settings file. |
-| `hook commands are not rooted at ${CLAUDE_PLUGIN_ROOT}` | Claude Code expands no other plugin-root token, so the script path is empty | Update the plugin. |
+| `hook commands are not rooted at …` | Claude Code expands only the `CLAUDE_PLUGIN_ROOT` token, so the script path is empty | Update the plugin. |
 | `marketplace 'openviking' is not registered` / root missing | Marketplace removed or its clone deleted | Re-run the installer. |
 | `plugin.json does not declare skills` | Old plugin copy; `$ov-memory-doctor` and the other bundled skills are not loaded | Update the plugin. |
 | `cached plugin X differs from this copy` | The doctor was run from a checkout while Codex runs another version | Rerun from the cache path (Step 1). |
@@ -131,10 +133,10 @@ More symptoms, exact error strings and log stage names: [reference.md](reference
 ## Step 3 — targeted checks (only when the report is not conclusive)
 
 Prove hooks run at all: put `OPENVIKING_DEBUG=1` in the environment that
-launches Codex, run one turn, then read `~/.openviking/logs/codex-hooks.log`
-(JSONL; grep `"error"`). An absent or unchanged log after a full turn means the
+launches the host, run one turn, then read `~/.openviking/logs/codex-hooks.log`
+(Codex) or `~/.openviking/logs/cc-hooks.log` (Claude Code) (JSONL; grep `"error"`). An absent or unchanged log after a full turn means the
 hooks were not spawned — a hooks / trust / node problem, not a server
-problem. `~/.openviking/logs/cc-hooks.log` belongs to the Claude Code plugin.
+problem.
 
 Prove the key and identity by hand (`Bearer` is case-sensitive with exactly one
 space):
@@ -155,7 +157,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$URL/mcp" \
 ```
 
 Prove a capture landed: the state file for the session in
-`~/.openviking/codex-plugin-state/<session_id>.json` carries `ovSessionId`
+`~/.openviking/hook-state/<session_id>.json` carries `ovSessionId`
 (`cx-<session_id>`) and `capturedTurnCount`; `GET $URL/api/v1/sessions/cx-<session_id>`
 (or `ov session get cx-<session_id>`) should show `total_message_count ≥` that
 count, and `commit_count > 0` proves extraction ran.

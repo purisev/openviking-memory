@@ -21,6 +21,12 @@ const OVERRIDES = [
   "OPENVIKING_BEARER_TOKEN",
   "OPENVIKING_RECALL_QUERY_FILTERS",
   "OPENVIKING_CAPTURE_FILTERS",
+  "OPENVIKING_DEBUG_LOG",
+  // Host markers: the suite runs as Codex unless a test names another host.
+  "PLUGIN_ROOT",
+  "CLAUDE_PLUGIN_ROOT",
+  "CLAUDE_CONFIG_DIR",
+  "CLAUDECODE",
 ];
 
 /**
@@ -204,5 +210,38 @@ test("a comma survives in a configured rule but splits an env one", () => {
     env: { OPENVIKING_CAPTURE_FILTERS: "s/a{2,}/X/" },
   }, () => {
     assert.deepEqual(loadConfig().captureFilters, ["s/a{2", "}/X/"]);
+  });
+});
+
+test("under Claude Code the plugin.claude_code section applies and plugin.codex does not", () => {
+  withConfigs({
+    cli: {
+      url: "http://127.0.0.1:1933",
+      api_key: "sk-cli",
+      plugin: { recallLimit: 3, codex: { recallLimit: 5 }, claude_code: { recallLimit: 7 } },
+    },
+    env: { CLAUDE_PLUGIN_ROOT: "/plugins/openviking-memory" },
+  }, ({ otherDir }) => {
+    const cfg = loadConfig(otherDir);
+    assert.equal(cfg.harness, "claude-code");
+    assert.equal(cfg.recallLimit, 7);
+    assert.match(cfg.userAgent, /^openviking-memory-claude-code\//);
+    assert.match(cfg.debugLogPath, /cc-hooks\.log$/);
+  });
+});
+
+test("under Codex the plugin.codex section applies and the log is codex-hooks.log", () => {
+  withConfigs({
+    cli: {
+      url: "http://127.0.0.1:1933",
+      api_key: "sk-cli",
+      plugin: { recallLimit: 3, codex: { recallLimit: 5 }, claude_code: { recallLimit: 7 } },
+    },
+    env: { PLUGIN_ROOT: "/plugins/openviking-memory", CLAUDE_PLUGIN_ROOT: "/plugins/openviking-memory" },
+  }, ({ otherDir }) => {
+    const cfg = loadConfig(otherDir);
+    assert.equal(cfg.harness, "codex");
+    assert.equal(cfg.recallLimit, 5);
+    assert.match(cfg.debugLogPath, /codex-hooks\.log$/);
   });
 });

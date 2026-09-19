@@ -49,9 +49,11 @@ import { createLogger } from "./debug-log.mjs";
 import { catchUpTurns, makeFetchJSON } from "./ov-session.mjs";
 import { detectRecallCompressorProfile } from "./recall-compressor-profile.mjs";
 import {
+  adoptStateDir,
   clearEnded,
   clearState,
   deriveOvSessionId,
+  hookEnv,
   listStates,
   loadState,
   readEndedAt,
@@ -66,7 +68,7 @@ const { log, logError } = createLogger("session-start");
 let activePeerId = cfg.peerId || "";
 
 const IDLE_TTL_MS = (() => {
-  const v = Number(process.env.OPENVIKING_CODEX_IDLE_TTL_MS);
+  const v = Number(hookEnv("IDLE_TTL_MS"));
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : 1_800_000;
 })();
 
@@ -77,7 +79,7 @@ const HOOK_STARTED_AT = Date.now();
 const { fetchJSONRes } = makeFetchJSON(cfg, { getActorPeerId: () => activePeerId });
 
 const COMMITTED_TTL_MS = (() => {
-  const v = Number(process.env.OPENVIKING_CODEX_COMMITTED_TTL_MS);
+  const v = Number(hookEnv("COMMITTED_TTL_MS"));
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : 2_592_000_000;
 })();
 
@@ -337,6 +339,8 @@ async function main() {
     noop();
     return;
   }
+
+  if (await adoptStateDir()) log("state_dir_adopted", {});
 
   const source = input.source || "unknown";
   const newSessionId = input.session_id || "unknown";

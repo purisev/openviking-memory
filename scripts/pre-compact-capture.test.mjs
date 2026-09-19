@@ -91,7 +91,7 @@ function baseEnv(baseUrl, stateDir, extra = {}) {
     OPENVIKING_URL: baseUrl,
     OPENVIKING_AUTO_CAPTURE: "1",
     OPENVIKING_CAPTURE_ASSISTANT_TURNS: "1",
-    OPENVIKING_CODEX_STATE_DIR: stateDir,
+    OPENVIKING_HOOK_STATE_DIR: stateDir,
     OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
     OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
     OPENVIKING_CREDENTIAL_SOURCE: "env",
@@ -197,7 +197,7 @@ test("pre-compact leaves state untouched when the session lock is held", async (
     await withMockOpenViking(mockHandler(calls), async (baseUrl) => {
       const { output } = await runPreCompact(
         { session_id: "pc2", transcript_path: transcriptPath, trigger: "manual" },
-        baseEnv(baseUrl, stateDir, { OPENVIKING_CODEX_LOCK_WAIT_MS: "300" }),
+        baseEnv(baseUrl, stateDir, { OPENVIKING_HOOK_LOCK_WAIT_MS: "300" }),
       );
       assert.deepEqual(output, {});
     });

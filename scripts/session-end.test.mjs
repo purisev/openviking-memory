@@ -92,7 +92,7 @@ function workerEnv(baseUrl, stateDir, extra = {}) {
     OPENVIKING_URL: baseUrl,
     OPENVIKING_AUTO_CAPTURE: "1",
     OPENVIKING_CAPTURE_ASSISTANT_TURNS: "1",
-    OPENVIKING_CODEX_STATE_DIR: stateDir,
+    OPENVIKING_HOOK_STATE_DIR: stateDir,
     OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
     OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
     OPENVIKING_CREDENTIAL_SOURCE: "env",
@@ -359,7 +359,7 @@ test("a fresh lock blocks the worker; a stale one does not", async () => {
     await withMockOpenViking(mockHandler(calls), async (baseUrl) => {
       await runSessionEnd(
         { session_id: "s7", transcript_path: transcriptPath },
-        workerEnv(baseUrl, stateDir, { OPENVIKING_CODEX_LOCK_WAIT_MS: "300" }),
+        workerEnv(baseUrl, stateDir, { OPENVIKING_HOOK_LOCK_WAIT_MS: "300" }),
       );
 
       assert.equal(calls.length, 0, "a held lock must stop every HTTP call");
@@ -370,7 +370,7 @@ test("a fresh lock blocks the worker; a stale one does not", async () => {
       await utimes(lockDir, old, old);
       await runSessionEnd(
         { session_id: "s7", transcript_path: transcriptPath },
-        workerEnv(baseUrl, stateDir, { OPENVIKING_CODEX_LOCK_WAIT_MS: "300" }),
+        workerEnv(baseUrl, stateDir, { OPENVIKING_HOOK_LOCK_WAIT_MS: "300" }),
       );
     });
 

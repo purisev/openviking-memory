@@ -14,7 +14,7 @@ This is the Codex counterpart to [`claude-code-memory-plugin`](../claude-code-me
 - **Incremental capture on `Stop`** (turn end): append the new user/assistant turns to a deterministic OpenViking session id `cx-<codex_session_id>`. When `pending_tokens` reaches `OPENVIKING_COMMIT_TOKEN_THRESHOLD`, commit while keeping a recent live tail.
 - **Commit on `PreCompact`**: trigger OpenViking's memory extractor on the full pre-compact transcript before Codex summarizes it.
 - **Commit on `SessionEnd`** (Codex ≥ 0.145): when a thread shuts down gracefully, catch up any turns `Stop` never sent and commit the OV session, so the extractor runs on the whole conversation the moment you leave.
-- **Fallback sweep on `SessionStart` (source=startup|clear)**: commit state files that carry an end marker whose commit did not go through, or that have been idle past `OPENVIKING_CODEX_IDLE_TTL_MS`. `source=resume` never commits or sweeps; if the live OV session was already committed, it combines the profile block with the latest archive summary for continuity. See `DESIGN.md` for the full decision tree.
+- **Fallback sweep on `SessionStart` (source=startup|clear)**: commit state files that carry an end marker whose commit did not go through, or that have been idle past `OPENVIKING_HOOK_IDLE_TTL_MS`. `source=resume` never commits or sweeps; if the live OV session was already committed, it combines the profile block with the latest archive summary for continuity. See `DESIGN.md` for the full decision tree.
 
 It also starts a local stdio MCP proxy that forwards to OpenViking's native `/mcp` endpoint with credentials resolved from env / `ovcli.conf`, so the model has direct access to the server's retrieval, memory, resource, watch, filesystem, and code-navigation tools.
 
@@ -88,16 +88,22 @@ This path works out of the box against an unauthenticated local OpenViking at `h
 
 ### C. Claude Code marketplace install
 
-The repository root doubles as a Claude Code marketplace (`.claude-plugin/marketplace.json`) whose single plugin is the repository itself:
+The plugin is published in the `purisev` marketplace ([purisev/agent-plugins](https://github.com/purisev/agent-plugins)):
 
-```bash
-claude plugin marketplace add purisev/openviking-memory
-claude plugin install openviking-memory@openviking-memory
+```
+/plugin marketplace add purisev/agent-plugins
+/plugin install openviking-memory@purisev
 ```
 
-From a local checkout, use `claude plugin marketplace add <checkout>` instead, or load it for one session with `claude --plugin-dir <checkout>`. `claude plugin validate <checkout>` checks the manifests.
+From a checkout, load it for one session with `claude --plugin-dir <checkout>`. `claude plugin validate <checkout>/.claude-plugin/plugin.json` checks the manifest.
 
-Claude Code needs `node` on `PATH` for the hooks and the MCP proxy. Connection settings come from the same `~/.openviking/ovcli.conf` / `OPENVIKING_*` sources as under Codex, and plugin tuning is read from the `plugin.codex` section there. `node scripts/ov-memory-doctor.mjs --harness claude-code` checks the Claude Code install (plugin registry, enablement, `disableAllHooks`, hook commands); inside a Claude Code session the host is detected without the flag.
+**Requirements.** `node` 18 or newer on `PATH` for the environment that launches Claude Code: the hooks and the MCP proxy run the bare `node` command. A `sh` check at SessionStart tells the agent when `node` is missing or too old, so it can offer to install it; nothing is installed without the user's consent.
+
+**Connection.** Enabling the plugin prompts for the server URL, an API key (kept in Claude Code's credential store) and, for trusted-mode servers, account and user. Every answer is optional. An answer takes the place of the matching `OPENVIKING_*` variable: it outranks `~/.openviking/ovcli.conf` and yields to a variable that is actually set. Leave the prompts empty to keep using `ovcli.conf`. Change the answers later in `/plugin`.
+
+**Tuning** is read per host: `plugin.claude_code` under Claude Code, `plugin.codex` under Codex, and keys directly under `plugin` apply to both. Hook errors are logged to `~/.openviking/logs/cc-hooks.log` under Claude Code and `codex-hooks.log` under Codex. Session state is shared in `~/.openviking/hook-state`.
+
+**Diagnostics.** The `ov-memory-doctor` skill, or `node scripts/ov-memory-doctor.mjs --harness claude-code`, checks the install (plugin registry, enablement, errors Claude Code reports, `disableAllHooks`, hook commands), the configuration and the connection. Claude Code hands plugin options only to hooks and MCP servers, so the doctor reads the non-sensitive ones from Claude Code's settings and needs `OPENVIKING_API_KEY` in its shell to run the authenticated checks with a key entered at the prompt.
 
 ### Manual setup
 
@@ -275,8 +281,8 @@ On all three sources, the hook uses the same shared `buildProfileBlock()` implem
 On `startup` or `clear`, the script walks every state file except the new session_id and, for each one that still holds a live `ovSessionId` or carries an end marker:
 
 1. **`ended_retry`**: an `.ended.<timestamp>` marker is present, meaning `SessionEnd` fired but its commit never completed (server down, worker killed). Commit it now. A marker is swept even when the state has no live `ovSessionId`: `PreCompact` releases the id but leaves the cursor behind, so the catch-up under the lock is the only way the tail turns are ever sent, and it derives a live id by itself as soon as it has something to send.
-2. **`idle_ttl`**: no marker, but the state has been idle for more than `OPENVIKING_CODEX_IDLE_TTL_MS` (default 30 min). This is the path for exits that never fire `SessionEnd` — signals, crashes, Codex older than 0.145, and app-server threads whose `SessionEnd` is deferred.
-3. **Cursor retention in the same pass**: a state file with no live OV session is kept as a resume cursor until `OPENVIKING_CODEX_COMMITTED_TTL_MS` (default 30 days), or dropped after the idle TTL if it never captured a turn.
+2. **`idle_ttl`**: no marker, but the state has been idle for more than `OPENVIKING_HOOK_IDLE_TTL_MS` (default 30 min). This is the path for exits that never fire `SessionEnd` — signals, crashes, Codex older than 0.145, and app-server threads whose `SessionEnd` is deferred.
+3. **Cursor retention in the same pass**: a state file with no live OV session is kept as a resume cursor until `OPENVIKING_HOOK_COMMITTED_TTL_MS` (default 30 days), or dropped after the idle TTL if it never captured a turn.
 
 Each candidate is committed under its per-session lock with no waiting; a lock the sweep cannot take means a `SessionEnd` or `Stop` worker already owns that session, and the sweep logs the skip and moves on. Under the lock it first appends whatever the state's recorded `transcriptPath` still holds past the cursor, so a session whose own workers never ran is not archived without its tail turns; if part of that append fails it keeps the live session and the marker and leaves the commit to the next sweep. It also re-reads the `.ended` marker there: an `ended_retry` candidate whose marker is now gone (the thread was resumed) or newer than the snapshot (a later exit will commit it) falls back to the idle rule. A recorded `transcriptPath` that cannot be read is never mistaken for an empty transcript: the sweep logs `transcript_unreadable`, keeps the live session and the marker, and skips the commit. Commits preserve the transcript cursor for resume.
 
@@ -294,7 +300,7 @@ On `resume`, the script skips commit/sweep. It still injects the profile block. 
 
 Codex injects `additionalContext` into the model turn, so memories arrive without an extra tool call. By default, recalled context below `OPENVIKING_RECALL_COMPRESS_MIN_INPUT_CHARS` is injected directly; larger blocks pass through the shared relevance compressor, and an identical query/context pair reuses its cached digest. If the compressor returns `NO_RELEVANT_MEMORY`, empty text, or non-digest chatter, the hook emits `{}` and injects nothing. The whole hook has its own `OPENVIKING_RECALL_TIMEOUT_MS` deadline (default 120s); the bundled `hooks.json` gives Codex 130s so the script can return `{}` before Codex kills it. Digests keep validated `viking://` source URIs and point the model at the OpenViking MCP `read`/`search` tools for details when the inline bullet is intentionally short. The outer `<openviking-context ...>` wrapper is deterministic, not compressor-generated; capture strips it to distinguish recalled context from the user's prompt. Set `OPENVIKING_RECALL_COMPRESS=0` to fall back to deterministic short formatting.
 
-The compressor profile is recreated on every `SessionStart` and cached under `OPENVIKING_CODEX_STATE_DIR` so cross-session config changes are picked up but each `UserPromptSubmit` does not probe models. Default fallback order:
+The compressor profile is recreated on every `SessionStart` and cached under `OPENVIKING_HOOK_STATE_DIR` so cross-session config changes are picked up but each `UserPromptSubmit` does not probe models. Default fallback order:
 
 1. configured `OPENVIKING_RECALL_COMPRESS_MODEL` + `OPENVIKING_RECALL_COMPRESS_THINKING`
 2. `gpt-5.3-codex-spark` with thinking `default`
@@ -338,7 +344,7 @@ layers; resolution order is env vars → the workspace layers → `plugin.codex`
 
 ### Stop (turn end → `add_message`, threshold commit)
 
-`auto-capture.mjs` derives one long-lived OpenViking session id per Codex `session_id` as `cx-<safe-session-id>` and incrementally appends every new user/assistant turn via `/api/v1/sessions/{id}/messages`. The `/messages` endpoint auto-creates the session on first append. Per-codex-session state lives at `~/.openviking/codex-plugin-state/<safe-session-id>.json`. Capture sanitizes obvious hook noise, metadata wrappers, and plugin-injected `<openviking-context ...>` blocks before append. Tool calls and results become dedicated `tool` parts and `tool_output` is reported verbatim — the server externalizes anything larger than `tool_output_externalization.threshold_chars` (default `20000`) and leaves a synopsis stub plus `tool_output_ref`, so the original stays readable via `/api/v1/sessions/{id}/tool-results`. `OPENVIKING_CAPTURE_TOOL_MAX_CHARS` (default `1000000`) is only a guard against pathological payloads. Configured `captureFilters` rules run last, just before the payload is sent — see [Input filters](#input-filters).
+`auto-capture.mjs` derives one long-lived OpenViking session id per Codex `session_id` as `cx-<safe-session-id>` and incrementally appends every new user/assistant turn via `/api/v1/sessions/{id}/messages`. The `/messages` endpoint auto-creates the session on first append. Per-codex-session state lives at `~/.openviking/hook-state/<safe-session-id>.json`. Capture sanitizes obvious hook noise, metadata wrappers, and plugin-injected `<openviking-context ...>` blocks before append. Tool calls and results become dedicated `tool` parts and `tool_output` is reported verbatim — the server externalizes anything larger than `tool_output_externalization.threshold_chars` (default `20000`) and leaves a synopsis stub plus `tool_output_ref`, so the original stays readable via `/api/v1/sessions/{id}/tool-results`. `OPENVIKING_CAPTURE_TOOL_MAX_CHARS` (default `1000000`) is only a guard against pathological payloads. Configured `captureFilters` rules run last, just before the payload is sent — see [Input filters](#input-filters).
 
 After a successful append, Stop reads the session meta and commits when `pending_tokens >= OPENVIKING_COMMIT_TOKEN_THRESHOLD` (default `20000`). Threshold commits pass `keep_recent_count=OPENVIKING_COMMIT_KEEP_RECENT_COUNT` (default `10`) so the newest turns remain live for continuity while older context is archived and extracted. `PreCompact` still commits everything before compaction.
 
@@ -360,7 +366,7 @@ After a successful append, Stop reads the session meta and commits when `pending
 
 The `.ended.<timestamp>` marker and the per-session `.lock` directory live beside the state file. The timestamp it was written at is the marker's identity, and it is part of the filename: the `SessionEnd` parent hands it to its worker, which verifies the marker still matches before committing and returns untouched if it does not, and `Stop` / `PreCompact` / `resume` only clear markers older than their own start time. Because each removal unlinks the exact marker paths below its cutoff, a marker written while a removal is in flight is a different file and survives, so a late worker cannot erase a fresh exit's marker. `Date.now()` is only the starting point for that name: the marker is created exclusively and its timestamp bumped until that succeeds, so two exits within one millisecond cannot share a path. A bare `<id>.ended` written by an older build is still read back.
 
-The lock serializes the four writers that persist the whole state object — the `Stop` worker, `PreCompact`, the `SessionEnd` worker, and the sweep — so none of them can clobber another's cursor or `ovSessionId`. The holder stamps an `owner` file inside the lock directory and releases only while it still owns it; a stale lock is taken over in place by claiming that `owner` file — an atomic rename aside followed by an exclusive create, so exactly one taker wins and the lock path is never momentarily absent. Its wait budget is `OPENVIKING_CODEX_LOCK_WAIT_MS` (default 120s for `SessionEnd`, 40s for `PreCompact`, which must answer inside a 60s hook budget); the sweep never waits.
+The lock serializes the four writers that persist the whole state object — the `Stop` worker, `PreCompact`, the `SessionEnd` worker, and the sweep — so none of them can clobber another's cursor or `ovSessionId`. The holder stamps an `owner` file inside the lock directory and releases only while it still owns it; a stale lock is taken over in place by claiming that `owner` file — an atomic rename aside followed by an exclusive create, so exactly one taker wins and the lock path is never momentarily absent. Its wait budget is `OPENVIKING_HOOK_LOCK_WAIT_MS` (default 120s for `SessionEnd`, 40s for `PreCompact`, which must answer inside a 60s hook budget); the sweep never waits.
 
 > **Upgrading from 0.7.x**: `SessionEnd` is a newly registered hook event, and Codex has no trust record for it. Run `/hooks` in Codex after updating and approve it, otherwise it silently never runs and every session falls back to the sweep.
 
@@ -395,8 +401,7 @@ codex-memory-plugin/
 ├── .codex-plugin/
 │   └── plugin.json              # Codex plugin manifest (mcp wiring)
 ├── .claude-plugin/
-│   ├── plugin.json              # Claude Code plugin manifest
-│   ├── marketplace.json         # Claude Code marketplace; its one plugin is this directory
+│   ├── plugin.json              # Claude Code plugin manifest (userConfig prompts)
 │   └── claude-mcp.json          # stdio MCP wiring rooted at ${CLAUDE_PLUGIN_ROOT}
 ├── hooks/
 │   └── hooks.json               # SessionStart + UserPromptSubmit + Stop + SessionEnd

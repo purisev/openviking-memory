@@ -12,7 +12,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -160,10 +160,21 @@ test("hooks.json roots every command at ${CLAUDE_PLUGIN_ROOT}, the token both ho
   for (const cmd of commands) {
     assert.match(
       cmd,
-      /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"\n]+\.mjs"$/,
+      /^(node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"\n]+\.mjs"|sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/preflight\.sh")$/,
       `hook command must quote the \${CLAUDE_PLUGIN_ROOT} script path: ${cmd}`,
     );
   }
+});
+
+test("SessionStart checks for node from sh, in a group of its own", () => {
+  const parsed = JSON.parse(readFileSync(join(pluginDir, "hooks", "hooks.json"), "utf-8"));
+  const groups = parsed.hooks?.SessionStart || [];
+  // The node-based hook stays the first group so its Codex trust record keeps its key.
+  assert.match(groups[0]?.hooks?.[0]?.command || "", /session-start-commit\.mjs/);
+  const preflight = groups.slice(1).flatMap((group) => group.hooks || []).filter((h) => /preflight\.sh/.test(h.command || ""));
+  assert.equal(preflight.length, 1);
+  assert.ok(preflight[0].command.startsWith("sh "), "the check must not need node to run");
+  assert.ok(existsSync(join(pluginDir, "scripts", "preflight.sh")));
 });
 
 test("hooks.json registers SessionEnd within Codex's clamped budget", () => {
@@ -184,6 +195,17 @@ test("Claude Code manifest leaves hooks to hooks/hooks.json auto-discovery", () 
   assert.equal(manifest.skills, "./skills/");
 });
 
+test("skill text never spells a token that Claude Code expands", () => {
+  // Claude Code replaces ${CLAUDE_PLUGIN_ROOT} in skill text with the install
+  // path, so prose that means the token itself would show a path instead.
+  const skillsDir = join(pluginDir, "skills");
+  const files = readdirSync(skillsDir, { recursive: true }).filter((rel) => rel.endsWith(".md"));
+  assert.ok(files.length > 0);
+  for (const rel of files) {
+    assert.ok(!readFileSync(join(skillsDir, rel), "utf-8").includes("${CLAUDE_PLUGIN_ROOT}"), `skills/${rel} spells \${CLAUDE_PLUGIN_ROOT}`);
+  }
+});
+
 test("Claude Code MCP config roots the proxy at ${CLAUDE_PLUGIN_ROOT}", () => {
   const manifest = readJson(join(pluginDir, ".claude-plugin", "plugin.json"));
   const server = readJson(join(pluginDir, manifest.mcpServers)).mcpServers?.[PLUGIN_NAME];
@@ -193,11 +215,18 @@ test("Claude Code MCP config roots the proxy at ${CLAUDE_PLUGIN_ROOT}", () => {
   assert.deepEqual(server.args, ["${CLAUDE_PLUGIN_ROOT}/servers/mcp-proxy.mjs"]);
 });
 
-test("Claude Code marketplace installs the plugin from the repository root", () => {
-  const marketplace = readJson(join(pluginDir, ".claude-plugin", "marketplace.json"));
-  const entry = marketplace.plugins.find((p) => p?.name === PLUGIN_NAME);
-  assert.ok(entry, `Claude Code marketplace must list "${PLUGIN_NAME}"`);
-  assert.equal(entry.source, "./");
+test("Claude Code prompts for the connection, and every answer is optional", () => {
+  const manifest = readJson(join(pluginDir, ".claude-plugin", "plugin.json"));
+  assert.deepEqual(Object.keys(manifest.userConfig), ["url", "api_key", "account", "user"]);
+  assert.equal(manifest.userConfig.api_key.sensitive, true);
+  // A required prompt would block users who configure ~/.openviking/ovcli.conf instead.
+  for (const option of Object.values(manifest.userConfig)) assert.notEqual(option.required, true);
+});
+
+test("the repository is not a marketplace of its own", () => {
+  // The plugin is published through purisev/agent-plugins; a second marketplace
+  // here would let one machine enable two copies and run every hook twice.
+  assert.ok(!existsSync(join(pluginDir, ".claude-plugin", "marketplace.json")));
 });
 
 test(".mcp.json starts the stdio MCP proxy from the plugin root", () => {
