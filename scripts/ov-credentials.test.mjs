@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { resolveOpenVikingCredentials } from "./ov-credentials.mjs";
+import { resolveOpenVikingCredentials, withPluginOptions } from "./ov-credentials.mjs";
 
 async function tempJson(prefix, value) {
   const dir = await mkdtemp(join(tmpdir(), prefix));
@@ -117,4 +117,47 @@ test("credentialPath names the file that supplied the api_key", async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("answered Claude Code plugin options outrank ovcli.conf", async () => {
+  const { dir, path } = await tempJson("ov-creds-opt-", { url: "https://file.example.com", api_key: "file-key" });
+  try {
+    const creds = resolveOpenVikingCredentials({
+      OPENVIKING_CLI_CONFIG_FILE: path,
+      CLAUDE_PLUGIN_OPTION_URL: "https://option.example.com",
+      CLAUDE_PLUGIN_OPTION_API_KEY: "option-key",
+    });
+    assert.equal(creds.baseUrl, "https://option.example.com");
+    assert.equal(creds.apiKey, "option-key");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("unanswered plugin options leave ovcli.conf in charge", async () => {
+  const { dir, path } = await tempJson("ov-creds-opt-", { url: "https://file.example.com", api_key: "file-key" });
+  try {
+    const creds = resolveOpenVikingCredentials({
+      OPENVIKING_CLI_CONFIG_FILE: path,
+      CLAUDE_PLUGIN_OPTION_URL: "  ",
+      CLAUDE_PLUGIN_OPTION_API_KEY: "",
+    });
+    assert.equal(creds.baseUrl, "https://file.example.com");
+    assert.equal(creds.apiKey, "file-key");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an explicit OPENVIKING_* variable, in any spelling, outranks a plugin option", () => {
+  const env = withPluginOptions({
+    OPENVIKING_BASE_URL: "https://env.example.com",
+    OPENVIKING_BEARER_TOKEN: "env-token",
+    CLAUDE_PLUGIN_OPTION_URL: "https://option.example.com",
+    CLAUDE_PLUGIN_OPTION_API_KEY: "option-key",
+    CLAUDE_PLUGIN_OPTION_ACCOUNT: "acme",
+  });
+  assert.equal(env.OPENVIKING_URL, undefined);
+  assert.equal(env.OPENVIKING_API_KEY, undefined);
+  assert.equal(env.OPENVIKING_ACCOUNT, "acme");
 });

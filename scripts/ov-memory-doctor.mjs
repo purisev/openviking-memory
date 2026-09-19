@@ -26,8 +26,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { checkClaudeCodeEnvironment, checkClaudeCodeInstall } from "./claude-code-install.mjs";
-import { detectHarness, HARNESSES, parseHarness } from "./harness.mjs";
+import { adoptPluginOptions, checkClaudeCodeEnvironment, checkClaudeCodeInstall } from "./claude-code-install.mjs";
+import { claudeConfigDir, detectHarness, HARNESSES, parseHarness } from "./harness.mjs";
 import { loadConfig } from "./config.mjs";
 import { getStateDir, hookEnv } from "./session-state.mjs";
 import {
@@ -375,17 +375,24 @@ function credentialSources(cfg, cliConf, ovConf, host) {
   const server = ov.server || {};
   const cliMode = cfg.credentialSource === "ovcli";
   const envUrl = env.OPENVIKING_URL || env.OPENVIKING_BASE_URL;
-  const url = (!cliMode && envUrl) ? "env" : cli.url ? cliShort : server.url ? ovShort : (server.host || server.port) ? `${ovShort} server.host/port` : "default (http://127.0.0.1:1933)";
+  const optionLabel = "Claude Code plugin option";
+  const url = (!cliMode && envUrl) ? "env" : (!cliMode && env.CLAUDE_PLUGIN_OPTION_URL) ? optionLabel : cli.url ? cliShort : server.url ? ovShort : (server.host || server.port) ? `${ovShort} server.host/port` : "default (http://127.0.0.1:1933)";
   const apiKey = cliMode
     ? (cli.api_key ? cliShort : "(none — ovcli.conf mode ignores env and ov.conf)")
-    : env.OPENVIKING_BEARER_TOKEN ? "env OPENVIKING_BEARER_TOKEN" : env.OPENVIKING_API_KEY ? "env OPENVIKING_API_KEY" : cli.api_key ? cliShort : cx.apiKey ? `${ovShort} ${host.settingsKey}.apiKey` : server.root_api_key ? `${ovShort} server.root_api_key` : "(none)";
+    : env.OPENVIKING_BEARER_TOKEN ? "env OPENVIKING_BEARER_TOKEN" : env.OPENVIKING_API_KEY ? "env OPENVIKING_API_KEY" : env.CLAUDE_PLUGIN_OPTION_API_KEY ? optionLabel : cli.api_key ? cliShort : cx.apiKey ? `${ovShort} ${host.settingsKey}.apiKey` : server.root_api_key ? `${ovShort} server.root_api_key` : "(none)";
   const account = (!cliMode && env.OPENVIKING_ACCOUNT) ? "env" : (cli.account || cli.account_id) ? cliShort : (!cliMode && cx.accountId) ? `${ovShort} ${host.settingsKey}.accountId` : "(unset)";
   const user = (!cliMode && env.OPENVIKING_USER) ? "env" : (cli.user || cli.user_id) ? cliShort : (!cliMode && cx.userId) ? `${ovShort} ${host.settingsKey}.userId` : "(unset)";
   return { url, apiKey, account, user };
 }
 
-function checkConfig(report, cfg, host) {
+function checkConfig(report, cfg, host, adoptedOptions = []) {
   report.section("Configuration");
+  if (adoptedOptions.length) {
+    report.info(
+      `Claude Code plugin options in use: ${adoptedOptions.join(", ")}`,
+      "read from Claude Code's settings; an API key entered at the same prompt is kept in Claude Code's credential store and reaches only hooks and the MCP server, so without OPENVIKING_API_KEY in this shell the authenticated checks below run without it",
+    );
+  }
   const expand = (p) => (p ? resolvePath(p.replace(/^~(?=$|\/)/, homedir())) : p);
   const cliPath = expand(process.env.OPENVIKING_CLI_CONFIG_FILE || join(homedir(), ".openviking", "ovcli.conf"));
   const ovPath = expand(process.env.OPENVIKING_CONFIG_FILE || join(homedir(), ".openviking", "ov.conf"));
@@ -576,8 +583,9 @@ async function main() {
   const envInfo = checkEnvironment(report, host);
   if (host === HARNESSES.claudeCode) checkClaudeCodeInstall(report, { pluginRoot: PLUGIN_ROOT, ...envInfo });
   else checkInstall(report, envInfo);
+  const adoptedOptions = host === HARNESSES.claudeCode ? adoptPluginOptions(claudeConfigDir()) : [];
   const cfg = loadConfig();
-  const configInfo = checkConfig(report, cfg, host);
+  const configInfo = checkConfig(report, cfg, host, adoptedOptions);
   const workspace = checkWorkspace(report);
   const connection = await checkConnection(report, cfg, configInfo, opts);
   const serverHealth = await checkServerHealth(report, { baseUrl: cfg.baseUrl, ovConf: configInfo.ovConf, health: connection?.probes?.health, offline: opts.offline, timeoutMs: opts.timeoutMs });

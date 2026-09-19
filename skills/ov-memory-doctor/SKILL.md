@@ -96,10 +96,12 @@ Work top-down; fix the first ✗ and rerun before chasing the next.
 | `[plugins."…"] enabled = false` / `installed but disabled` | Plugin switched off in config.toml | Set `enabled = true`, restart Codex. |
 | `hooks disabled in [hooks.state]` | A hook was declined at the trust prompt | Remove `enabled = false` from that `[hooks.state."openviking-memory@openviking:hooks/hooks.json:<event>:0:0"]` section; approve the hook again. |
 | `hooks without a trust record yet` | Codex has not yet approved those hooks (fresh install or `hooks.json` changed on update) | Start a Codex session and accept the hook prompt; nothing is wrong. |
-| `Claude Code has no installed openviking-memory plugin` | Not installed; only `claude --plugin-dir` sessions load it | `claude plugin marketplace add purisev/openviking-memory`, then `claude plugin install openviking-memory@openviking-memory`. |
+| `Claude Code has no installed openviking-memory plugin` | Not installed; only `claude --plugin-dir` sessions load it | `claude plugin marketplace add purisev/agent-plugins`, then `claude plugin install openviking-memory@purisev`. |
 | `… is installed but disabled` (Claude Code) | Plugin switched off in `enabledPlugins` | `claude plugin enable <id>`, restart Claude Code. |
 | `installed plugin X differs from this copy` (Claude Code) | The doctor was run from a checkout while Claude Code runs the installed version | `claude plugin update <id>`, or rerun from the installed copy (Step 1). |
 | `more than one copy of openviking-memory is enabled` | Two marketplaces or scopes provide the plugin; every hook fires twice | Disable the stale one. |
+| `Claude Code reports a problem with …` | Claude Code disabled or degraded the plugin, for example over an unsatisfied plugin dependency | Follow the quoted error; the Errors tab of `/plugin` shows the same text. |
+| `Claude Code plugin options in use: …` (info) | The connection was entered at the plugin's prompts; the doctor reads the non-sensitive answers from Claude Code's settings and cannot read the API key | For authenticated checks run the doctor with `OPENVIKING_API_KEY` set in that shell. A 401 without it says nothing about the hooks. |
 | `disableAllHooks is set` | A Claude Code settings file silences every hook | Remove `disableAllHooks` from the listed settings file. |
 | `hook commands are not rooted at …` | Claude Code expands only the `CLAUDE_PLUGIN_ROOT` token, so the script path is empty | Update the plugin. |
 | `marketplace 'openviking' is not registered` / root missing | Marketplace removed or its clone deleted | Re-run the installer. |

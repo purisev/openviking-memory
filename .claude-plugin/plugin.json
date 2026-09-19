@@ -1,6 +1,6 @@
 {
   "name": "openviking-memory",
-  "version": "0.8.3+claude-code.local",
+  "version": "0.9.0",
   "description": "Long-term semantic memory for Claude Code, powered by OpenViking. Recall on UserPromptSubmit, incremental add_message on Stop (per turn), commit on SessionEnd and PreCompact, with an idle/ended sweep on SessionStart. Includes a local stdio MCP proxy that reads OpenViking credentials from env/ovcli.conf.",
   "author": {
     "name": "purisev",
@@ -8,7 +8,36 @@
   },
   "repository": "https://github.com/purisev/openviking-memory",
   "license": "Apache-2.0",
-  "keywords": ["memory", "openviking", "semantic-search", "long-term-memory", "context-engine"],
+  "keywords": [
+    "memory",
+    "openviking",
+    "semantic-search",
+    "long-term-memory",
+    "context-engine"
+  ],
   "mcpServers": "./.claude-plugin/claude-mcp.json",
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "userConfig": {
+    "url": {
+      "type": "string",
+      "title": "OpenViking server URL",
+      "description": "API root of your OpenViking server, for example https://openviking.example.com. Leave empty to use ~/.openviking/ovcli.conf or the OPENVIKING_* environment variables."
+    },
+    "api_key": {
+      "type": "string",
+      "title": "OpenViking API key",
+      "description": "A user or admin key for that server, not the root key. Leave empty to use ~/.openviking/ovcli.conf or OPENVIKING_API_KEY.",
+      "sensitive": true
+    },
+    "account": {
+      "type": "string",
+      "title": "Account (trusted-mode servers only)",
+      "description": "Sent as the account identity header. Leave empty when the server authenticates by API key."
+    },
+    "user": {
+      "type": "string",
+      "title": "User (trusted-mode servers only)",
+      "description": "Sent as the user identity header. Leave empty when the server authenticates by API key."
+    }
+  }
 }

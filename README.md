@@ -88,16 +88,22 @@ This path works out of the box against an unauthenticated local OpenViking at `h
 
 ### C. Claude Code marketplace install
 
-The repository root doubles as a Claude Code marketplace (`.claude-plugin/marketplace.json`) whose single plugin is the repository itself:
+The plugin is published in the `purisev` marketplace ([purisev/agent-plugins](https://github.com/purisev/agent-plugins)):
 
-```bash
-claude plugin marketplace add purisev/openviking-memory
-claude plugin install openviking-memory@openviking-memory
+```
+/plugin marketplace add purisev/agent-plugins
+/plugin install openviking-memory@purisev
 ```
 
-From a local checkout, use `claude plugin marketplace add <checkout>` instead, or load it for one session with `claude --plugin-dir <checkout>`. `claude plugin validate <checkout>` checks the manifests.
+From a checkout, load it for one session with `claude --plugin-dir <checkout>`. `claude plugin validate <checkout>/.claude-plugin/plugin.json` checks the manifest.
 
-Claude Code needs `node` on `PATH` for the hooks and the MCP proxy. Connection settings come from the same `~/.openviking/ovcli.conf` / `OPENVIKING_*` sources as under Codex. Plugin tuning is read per host: `plugin.claude_code` under Claude Code, `plugin.codex` under Codex, and keys directly under `plugin` apply to both. Hook errors are logged to `~/.openviking/logs/cc-hooks.log` under Claude Code and `codex-hooks.log` under Codex. Session state is shared in `~/.openviking/hook-state`. `node scripts/ov-memory-doctor.mjs --harness claude-code` checks the Claude Code install (plugin registry, enablement, `disableAllHooks`, hook commands); inside a Claude Code session the host is detected without the flag.
+**Requirements.** `node` 18 or newer on `PATH` for the environment that launches Claude Code: the hooks and the MCP proxy run the bare `node` command. A `sh` check at SessionStart tells the agent when `node` is missing or too old, so it can offer to install it; nothing is installed without the user's consent.
+
+**Connection.** Enabling the plugin prompts for the server URL, an API key (kept in Claude Code's credential store) and, for trusted-mode servers, account and user. Every answer is optional. An answer takes the place of the matching `OPENVIKING_*` variable: it outranks `~/.openviking/ovcli.conf` and yields to a variable that is actually set. Leave the prompts empty to keep using `ovcli.conf`. Change the answers later in `/plugin`.
+
+**Tuning** is read per host: `plugin.claude_code` under Claude Code, `plugin.codex` under Codex, and keys directly under `plugin` apply to both. Hook errors are logged to `~/.openviking/logs/cc-hooks.log` under Claude Code and `codex-hooks.log` under Codex. Session state is shared in `~/.openviking/hook-state`.
+
+**Diagnostics.** The `ov-memory-doctor` skill, or `node scripts/ov-memory-doctor.mjs --harness claude-code`, checks the install (plugin registry, enablement, errors Claude Code reports, `disableAllHooks`, hook commands), the configuration and the connection. Claude Code hands plugin options only to hooks and MCP servers, so the doctor reads the non-sensitive ones from Claude Code's settings and needs `OPENVIKING_API_KEY` in its shell to run the authenticated checks with a key entered at the prompt.
 
 ### Manual setup
 
@@ -395,8 +401,7 @@ codex-memory-plugin/
 ├── .codex-plugin/
 │   └── plugin.json              # Codex plugin manifest (mcp wiring)
 ├── .claude-plugin/
-│   ├── plugin.json              # Claude Code plugin manifest
-│   ├── marketplace.json         # Claude Code marketplace; its one plugin is this directory
+│   ├── plugin.json              # Claude Code plugin manifest (userConfig prompts)
 │   └── claude-mcp.json          # stdio MCP wiring rooted at ${CLAUDE_PLUGIN_ROOT}
 ├── hooks/
 │   └── hooks.json               # SessionStart + UserPromptSubmit + Stop + SessionEnd

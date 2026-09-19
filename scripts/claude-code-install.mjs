@@ -15,7 +15,7 @@ import { existsPath, homeShort, runCommand } from "./shared/doctor-core.mjs";
 
 const PLUGIN_NAME = "openviking-memory";
 const REQUIRED_PLUGIN_FILES = [".claude-plugin/plugin.json", "hooks/hooks.json", "servers/mcp-proxy.mjs", "scripts/config.mjs", "scripts/auto-recall.mjs", "scripts/auto-capture.mjs", "scripts/session-end.mjs", "scripts/ov-session.mjs"];
-const INSTALL_FIX = "claude plugin marketplace add purisev/openviking-memory && claude plugin install openviking-memory@openviking-memory";
+const INSTALL_FIX = "claude plugin marketplace add purisev/agent-plugins && claude plugin install openviking-memory@purisev";
 
 function tryJson(path) {
   try {
@@ -61,10 +61,39 @@ export function assessInstalledPlugins(rows, { version }) {
     else findings.push({ level: "ok", message: `${where} installed, enabled` });
     if (row.installPath && !existsPath(row.installPath)) findings.push({ level: "fail", message: "installed copy no longer exists on disk", detail: homeShort(row.installPath), fix: `claude plugin uninstall ${row.id} && claude plugin install ${row.id}` });
     else if (row.installPath) findings.push({ level: "info", message: `installed copy: ${homeShort(row.installPath)}` });
+    for (const error of Array.isArray(row.errors) ? row.errors : []) findings.push({ level: "fail", message: `Claude Code reports a problem with ${row.id}`, detail: typeof error === "string" ? error : JSON.stringify(error), fix: "see the Errors tab of /plugin" });
     if (row.enabled !== false && row.version && version && row.version !== version) findings.push({ level: "warn", message: `installed plugin ${row.version} differs from this copy (${version})`, detail: "Claude Code runs hooks from the installed copy", fix: `claude plugin update ${row.id} and restart Claude Code` });
   }
   if (enabled.length > 1) findings.push({ level: "warn", message: `more than one copy of ${PLUGIN_NAME} is enabled`, detail: enabled.map((row) => `${row.id} (${row.scope || "?"})`).join(", "), fix: "disable the stale one or hooks fire twice" });
   return findings;
+}
+
+/**
+ * Non-sensitive answers to the manifest's userConfig prompts, as Claude Code
+ * stores them in user settings. Sensitive answers live in Claude Code's
+ * credential store and reach only hooks and MCP servers.
+ */
+export function readPluginOptions(configDir) {
+  const configs = tryJson(join(configDir, "settings.json"))?.pluginConfigs || {};
+  const id = Object.keys(configs).find((key) => key.split("@")[0] === PLUGIN_NAME);
+  const options = id ? configs[id]?.options : null;
+  return options && typeof options === "object" ? options : {};
+}
+
+/**
+ * The Bash tool does not receive CLAUDE_PLUGIN_OPTION_*, so a doctor started
+ * from it would resolve a different connection than the hooks do. Returns the
+ * option names it filled in.
+ */
+export function adoptPluginOptions(configDir, env = process.env) {
+  const adopted = [];
+  for (const [key, value] of Object.entries(readPluginOptions(configDir))) {
+    const name = `CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`;
+    if (env[name] !== undefined || value === "" || value == null) continue;
+    env[name] = String(value);
+    adopted.push(key);
+  }
+  return adopted;
 }
 
 /** Settings files in which `disableAllHooks` silences the plugin's hooks. */
