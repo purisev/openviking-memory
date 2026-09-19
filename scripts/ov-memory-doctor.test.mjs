@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { assessHooksFeature, parseFeaturesList } from "./ov-memory-doctor.mjs";
+import { assessHooksFeature, installedMarketplace, parseFeaturesList } from "./ov-memory-doctor.mjs";
 
 test("parseFeaturesList: parses standard codex features list output", () => {
   const sample = `
@@ -99,4 +99,15 @@ test("assessHooksFeature: unset in toml and CLI probe unavailable (fallback to i
   const resUndef = assessHooksFeature(undefined, null);
   assert.equal(resUndef.status, "info");
   assert.match(resUndef.message, /\[features\] hooks is not set/);
+});
+
+test("installedMarketplace: reads the marketplace from the enabled plugin section", () => {
+  assert.equal(installedMarketplace({ 'plugins."openviking-memory@purisev"': { enabled: true } }), "purisev");
+  assert.equal(installedMarketplace({
+    'plugins."openviking-memory@old"': { enabled: false },
+    'plugins."openviking-memory@personal"': { enabled: true },
+    'plugins."other@purisev"': { enabled: true },
+  }), "personal");
+  assert.equal(installedMarketplace({}), "");
+  assert.equal(installedMarketplace(null), "");
 });
