@@ -7,8 +7,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   assessInstalledPlugins,
-  detectHarness,
-  HARNESSES,
   readInstalledPlugins,
   settingsDisablingHooks,
   unresolvableHookCommands,
@@ -20,23 +18,6 @@ function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(value));
 }
-
-test("detectHarness: an explicit choice wins over location and environment", () => {
-  const host = detectHarness({ explicit: "codex", pluginRoot: "/h/.claude/plugins/cache/x", env: { CLAUDECODE: "1" }, home: "/h" });
-  assert.equal(host, HARNESSES.codex);
-  assert.equal(detectHarness({ explicit: "claude_code", env: {}, home: "/h" }), HARNESSES.claudeCode);
-});
-
-test("detectHarness: a host's plugin cache decides before the environment", () => {
-  assert.equal(detectHarness({ pluginRoot: "/h/.claude/plugins/cache/m/p/1.0", env: {}, home: "/h" }), HARNESSES.claudeCode);
-  assert.equal(detectHarness({ pluginRoot: "/h/.codex/plugins/cache/m/p/1.0", env: { CLAUDECODE: "1" }, home: "/h" }), HARNESSES.codex);
-  assert.equal(detectHarness({ pluginRoot: "/cfg/plugins/cache/m/p", env: { CLAUDE_CONFIG_DIR: "/cfg" }, home: "/h" }), HARNESSES.claudeCode);
-});
-
-test("detectHarness: a checkout follows the environment and defaults to Codex", () => {
-  assert.equal(detectHarness({ pluginRoot: "/src/plugin", env: { CLAUDECODE: "1" }, home: "/h" }), HARNESSES.claudeCode);
-  assert.equal(detectHarness({ pluginRoot: "/src/plugin", env: {}, home: "/h" }), HARNESSES.codex);
-});
 
 test("unresolvableHookCommands: flags commands without ${CLAUDE_PLUGIN_ROOT}", () => {
   const config = {

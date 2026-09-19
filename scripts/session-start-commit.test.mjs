@@ -80,7 +80,7 @@ function baseEnv(baseUrl, stateDir) {
     OPENVIKING_CREDENTIAL_SOURCE: "env",
     OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
     OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
-    OPENVIKING_CODEX_STATE_DIR: stateDir,
+    OPENVIKING_HOOK_STATE_DIR: stateDir,
     OPENVIKING_RECALL_COMPRESS_DETECT_ON_STARTUP: "0",
     OPENVIKING_TIMEOUT_MS: "5000",
     OPENVIKING_CAPTURE_TIMEOUT_MS: "5000",
@@ -289,7 +289,7 @@ test("startup ignores committed cursor-only states", async () => {
         { session_id: "new-session", source: "startup", cwd: "/tmp/codex-cursor-only" },
         {
           ...baseEnv(baseUrl, stateDir),
-          OPENVIKING_CODEX_IDLE_TTL_MS: "5000",
+          OPENVIKING_HOOK_IDLE_TTL_MS: "5000",
         },
       );
     });
@@ -340,8 +340,8 @@ test("startup retires cursor-only states once their retention window closes", as
         { session_id: "new-session", source: "startup", cwd: "/tmp/codex-cursor-retention" },
         {
           ...baseEnv(baseUrl, stateDir),
-          OPENVIKING_CODEX_IDLE_TTL_MS: "5000",
-          OPENVIKING_CODEX_COMMITTED_TTL_MS: "8000",
+          OPENVIKING_HOOK_IDLE_TTL_MS: "5000",
+          OPENVIKING_HOOK_COMMITTED_TTL_MS: "8000",
         },
       );
     });
@@ -372,7 +372,7 @@ test("startup leaves a fresh live session alone until it ends or goes idle", asy
     await withMockOpenViking(profileHandler(requests), async (baseUrl) => {
       const { output } = await runSessionStart(
         { session_id: "new-session", source: "startup", cwd: "/tmp/codex-active-live" },
-        { ...baseEnv(baseUrl, stateDir), OPENVIKING_CODEX_IDLE_TTL_MS: "1800000" },
+        { ...baseEnv(baseUrl, stateDir), OPENVIKING_HOOK_IDLE_TTL_MS: "1800000" },
       );
       assert.equal(output.systemMessage, undefined);
     });
@@ -400,7 +400,7 @@ test("startup commits a live session once it passes the idle TTL", async () => {
     await withMockOpenViking(profileHandler(requests), async (baseUrl) => {
       const { output } = await runSessionStart(
         { session_id: "new-session", source: "startup", cwd: "/tmp/codex-idle-commit" },
-        { ...baseEnv(baseUrl, stateDir), OPENVIKING_CODEX_IDLE_TTL_MS: "5000" },
+        { ...baseEnv(baseUrl, stateDir), OPENVIKING_HOOK_IDLE_TTL_MS: "5000" },
       );
       assert.match(output.systemMessage, /cx-idle is committed/);
     });
@@ -705,7 +705,7 @@ test("a marker that disappears under the lock falls back to the idle rule", asyn
     await withMockOpenViking(sweepHandler(requests, { onBatch }), async (baseUrl) => {
       await runSessionStart(
         { session_id: "new-session", source: "startup", cwd: "/tmp/codex-sweep-marker-gone" },
-        { ...baseEnv(baseUrl, stateDir), OPENVIKING_CODEX_IDLE_TTL_MS: "1800000" },
+        { ...baseEnv(baseUrl, stateDir), OPENVIKING_HOOK_IDLE_TTL_MS: "1800000" },
       );
     });
 

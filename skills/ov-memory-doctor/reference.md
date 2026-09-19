@@ -2,14 +2,14 @@
 
 Companion to SKILL.md: where things live, what the exact error strings mean,
 and the symptom catalogue. Paths assume the defaults; `OPENVIKING_CONFIG_FILE`,
-`OPENVIKING_CLI_CONFIG_FILE`, `OPENVIKING_DEBUG_LOG`, `OPENVIKING_CODEX_STATE_DIR`
+`OPENVIKING_CLI_CONFIG_FILE`, `OPENVIKING_DEBUG_LOG`, `OPENVIKING_HOOK_STATE_DIR`
 and `CODEX_CONFIG_FILE` relocate individual pieces.
 
 ## Where things live
 
 | Path | What |
 |---|---|
-| `~/.openviking/ovcli.conf` | Client connection: `url`, `api_key`, `account`, `user`, optional `plugin.codex.*` tuning. Mode 0600. |
+| `~/.openviking/ovcli.conf` | Client connection: `url`, `api_key`, `account`, `user`, optional tuning under `plugin.<host>.*` — `plugin.codex` under Codex, `plugin.claude_code` under Claude Code — or directly under `plugin` for both. Where this page says `plugin.codex`, Claude Code reads `plugin.claude_code`. Mode 0600. |
 | `~/.openviking/ov.conf` | Server config. The plugin reads only `server.url/host/port`, `server.root_api_key` (last-resort key) and the legacy `codex` block. |
 | `~/.openviking/ovcli.conf.<name>` | Saved CLI profiles (`ov config switch` copies one over `ovcli.conf`). `ovcli.conf.bak.<epoch>` are installer backups. |
 | `<repo root>/.openviking/config.json` / `config.local.json` | Workspace config layers, `version: 1` required: `peer.source`, `peer.id`, `recall.*`, `capture.*`, `bypass.session_patterns`, `labels`. `config.json` is committed and shared; `config.local.json` is private and gitignored. Trusted without a prompt, but connection and credential keys (`url`, `api_key`, `account`, `user`, `extra_headers`, …) are stripped with a warning and `${VAR}` is never expanded. A blanket `.openviking/` rule in `.gitignore` stops `config.json` from ever being committed — narrow it to `.openviking/media/` and `.openviking/downloads/`. |
@@ -19,10 +19,10 @@ and `CODEX_CONFIG_FILE` relocate individual pieces.
 | `~/.codex/.tmp/marketplaces/openviking/` | Git clone of the marketplace (GitHub/TOS dist); `examples/codex-memory-plugin` inside it is what `codex plugin list` reports as the source path. |
 | `~/.claude/plugins/installed_plugins.json` | Claude Code's plugin registry: per `<plugin>@<marketplace>` id, the `scope`, `version` and `installPath` (the copy Claude Code runs hooks from, under `~/.claude/plugins/cache/`). `claude plugin list --json` reports the same rows plus `enabled`. `CLAUDE_CONFIG_DIR` relocates `~/.claude`. |
 | `~/.claude/settings.json`, `<project>/.claude/settings.json`, `settings.local.json` | `enabledPlugins["<id>"]` switches the plugin on; `disableAllHooks: true` silences every hook. Claude Code keeps no per-hook trust records. |
-| `~/.openviking/codex-plugin-state/<session_id>.json` | Per-session state: `ovSessionId` (`cx-<session_id>`, null once committed), `transcriptPath` (last rollout seen, used by the SessionStart sweep to catch up unsent turns), `capturedTurnCount`, `lastUpdatedAt`. |
-| `~/.openviking/codex-plugin-state/<session_id>.ended.<timestamp>` / `.lock` | Sidecars: `.ended.<timestamp>` marks a thread whose SessionEnd fired but whose commit has not succeeded yet (the timestamp is in the filename so a conditional removal cannot delete a newer exit's marker; a bare `.ended` is a pre-0.8.1 leftover); `.lock` is the directory lock serializing the capture hooks. |
-| `~/.openviking/codex-plugin-state/recall-compressor-profile.json` | Cached local-compressor detection (`profile.enabled`, `model`, `source`). |
-| `~/.openviking/logs/codex-hooks.log` | JSONL hook + proxy log; written only when `OPENVIKING_DEBUG=1` or `codex.debug: true`. |
+| `~/.openviking/hook-state/<session_id>.json` | Per-session state: `ovSessionId` (`cx-<session_id>`, null once committed), `transcriptPath` (last rollout seen, used by the SessionStart sweep to catch up unsent turns), `capturedTurnCount`, `lastUpdatedAt`. |
+| `~/.openviking/hook-state/<session_id>.ended.<timestamp>` / `.lock` | Sidecars: `.ended.<timestamp>` marks a thread whose SessionEnd fired but whose commit has not succeeded yet (the timestamp is in the filename so a conditional removal cannot delete a newer exit's marker; a bare `.ended` is a pre-0.8.1 leftover); `.lock` is the directory lock serializing the capture hooks. |
+| `~/.openviking/hook-state/recall-compressor-profile.json` | Cached local-compressor detection (`profile.enabled`, `model`, `source`). |
+| `~/.openviking/logs/codex-hooks.log` (Codex), `cc-hooks.log` (Claude Code) | JSONL hook + proxy log; written only when `OPENVIKING_DEBUG=1` or `codex.debug: true`. |
 | `~/.openviking/codex-plugin.rc.sh`, `~/.openviking/codex-memory-plugin/runtime/` | Residue of the pre-marketplace installer. The rc script, if still sourced, exports `OPENVIKING_*` and pins credentials to env mode. |
 
 ## Config resolution

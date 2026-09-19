@@ -44,15 +44,18 @@
  */
 
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { detectHarness } from "./harness.mjs";
 import { resolveOpenVikingCredentials } from "./ov-credentials.mjs";
 import { buildUserAgent, readManifestVersion } from "./shared/credentials.mjs";
-import { HARNESS_KEYS, loadPluginSettings } from "./shared/plugin-config.mjs";
+import { loadPluginSettings } from "./shared/plugin-config.mjs";
 
-const USER_AGENT = buildUserAgent(
-  "codex",
-  readManifestVersion(new URL("../.codex-plugin/plugin.json", import.meta.url)),
-);
+const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+function userAgentFor(host) {
+  return buildUserAgent(host.id, readManifestVersion(join(PLUGIN_ROOT, host.manifest)));
+}
 
 function num(val, fallback) {
   if (typeof val === "number" && Number.isFinite(val)) return val;
@@ -122,10 +125,11 @@ export function loadConfig(cwd = process.cwd()) {
   const configPath = cliPath || ovPath || null;
 
   // ovcli.conf plugin.<harness> overrides plugin.* which overrides ov.conf's
-  // codex section, so client-side tuning no longer needs a server config.
+  // harness section, so client-side tuning needs no server config.
+  const host = detectHarness({ pluginRoot: PLUGIN_ROOT });
   const workspaceCwd = str(cwd, "") || process.cwd();
-  const pluginSettings = loadPluginSettings(HARNESS_KEYS.codex, process.env, { cwd: workspaceCwd });
-  const cx = { ...(ovFile.codex || {}), ...pluginSettings };
+  const pluginSettings = loadPluginSettings(host.settingsKey, process.env, { cwd: workspaceCwd });
+  const cx = { ...(ovFile[host.settingsKey] || {}), ...pluginSettings };
   const server = ovFile.server || {};
   const explicitAuthMode = normalizeAuthMode(process.env.OPENVIKING_AUTH_MODE)
     || normalizeAuthMode(cx.authMode)
@@ -148,7 +152,7 @@ export function loadConfig(cwd = process.cwd()) {
     || creds.peerId;
 
   const debug = envBool("OPENVIKING_DEBUG") ?? (cx.debug === true);
-  const defaultLogPath = join(homedir(), ".openviking", "logs", "codex-hooks.log");
+  const defaultLogPath = join(homedir(), ".openviking", "logs", host.logFile);
   const debugLogPath = str(process.env.OPENVIKING_DEBUG_LOG, defaultLogPath);
   const workspacePeer = envBool("OPENVIKING_WORKSPACE_PEER") ?? (cx.workspacePeer !== false);
   const recallPeerScopeRaw = str(
@@ -207,8 +211,8 @@ export function loadConfig(cwd = process.cwd()) {
     peerId,
     workspacePeer,
     peerSource: str(process.env.OPENVIKING_PEER_SOURCE, null) ?? cx.peerSource,
-    harness: "codex",
-    userAgent: USER_AGENT,
+    harness: host.id,
+    userAgent: userAgentFor(host),
     timeoutMs,
     recallTimeoutMs,
 

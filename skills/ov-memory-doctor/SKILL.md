@@ -131,10 +131,10 @@ More symptoms, exact error strings and log stage names: [reference.md](reference
 ## Step 3 — targeted checks (only when the report is not conclusive)
 
 Prove hooks run at all: put `OPENVIKING_DEBUG=1` in the environment that
-launches Codex, run one turn, then read `~/.openviking/logs/codex-hooks.log`
-(JSONL; grep `"error"`). An absent or unchanged log after a full turn means the
+launches the host, run one turn, then read `~/.openviking/logs/codex-hooks.log`
+(Codex) or `~/.openviking/logs/cc-hooks.log` (Claude Code) (JSONL; grep `"error"`). An absent or unchanged log after a full turn means the
 hooks were not spawned — a hooks / trust / node problem, not a server
-problem. `~/.openviking/logs/cc-hooks.log` belongs to the Claude Code plugin.
+problem.
 
 Prove the key and identity by hand (`Bearer` is case-sensitive with exactly one
 space):
@@ -155,7 +155,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$URL/mcp" \
 ```
 
 Prove a capture landed: the state file for the session in
-`~/.openviking/codex-plugin-state/<session_id>.json` carries `ovSessionId`
+`~/.openviking/hook-state/<session_id>.json` carries `ovSessionId`
 (`cx-<session_id>`) and `capturedTurnCount`; `GET $URL/api/v1/sessions/cx-<session_id>`
 (or `ov session get cx-<session_id>`) should show `total_message_count ≥` that
 count, and `commit_count > 0` proves extraction ran.

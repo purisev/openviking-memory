@@ -29,13 +29,13 @@ function baseCfg(overrides = {}) {
 async function withTempState(action) {
   const stateDir = await mkdtemp(join(tmpdir(), "ov-compressor-state-"));
   const codexHome = await mkdtemp(join(tmpdir(), "ov-codex-home-"));
-  const prevState = process.env.OPENVIKING_CODEX_STATE_DIR;
-  process.env.OPENVIKING_CODEX_STATE_DIR = stateDir;
+  const prevState = process.env.OPENVIKING_HOOK_STATE_DIR;
+  process.env.OPENVIKING_HOOK_STATE_DIR = stateDir;
   try {
     await action({ stateDir, codexHome });
   } finally {
-    if (prevState === undefined) delete process.env.OPENVIKING_CODEX_STATE_DIR;
-    else process.env.OPENVIKING_CODEX_STATE_DIR = prevState;
+    if (prevState === undefined) delete process.env.OPENVIKING_HOOK_STATE_DIR;
+    else process.env.OPENVIKING_HOOK_STATE_DIR = prevState;
     await rm(stateDir, { recursive: true, force: true });
     await rm(codexHome, { recursive: true, force: true });
   }

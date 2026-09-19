@@ -28,7 +28,7 @@ cat > "$STATE_DIR/transcript.jsonl" <<'EOF'
 EOF
 
 OPENVIKING_CONFIG_FILE=$OV_CONF \
-OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
 CODEX_PLUGIN_ROOT=$PLUGIN \
 echo '{"session_id":"verify-sess","transcript_path":"'"$STATE_DIR"'/transcript.jsonl"}' \
   | node $PLUGIN/scripts/auto-capture.mjs
@@ -53,7 +53,7 @@ OPENVIKING_CONFIG_FILE=$OV_CONF ov read viking://user/sessions/cx-verify-sess/me
 ```bash
 echo '{"session_id":"verify-sess","transcript_path":"'"$STATE_DIR"'/transcript.jsonl"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     node $PLUGIN/scripts/auto-capture.mjs
 ```
@@ -72,7 +72,7 @@ EOF
 
 echo '{"session_id":"verify-sess","transcript_path":"'"$STATE_DIR"'/transcript.jsonl"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     node $PLUGIN/scripts/auto-capture.mjs
 ```
@@ -85,7 +85,7 @@ Expect: `appended 2 turn(s)` (only the new ones). Re-read
 ```bash
 echo '{"session_id":"verify-sess","transcript_path":"'"$STATE_DIR"'/transcript.jsonl","trigger":"manual"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     node $PLUGIN/scripts/pre-compact-capture.mjs
 ```
@@ -114,7 +114,7 @@ EOF
 
 echo '{"session_id":"verify-sess","transcript_path":"'"$STATE_DIR"'/transcript.jsonl"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     node $PLUGIN/scripts/auto-capture.mjs
 ```
@@ -146,7 +146,7 @@ EOF
 
 echo '{"session_id":"verify-sess","transcript_path":"'"$STATE_DIR"'/transcript.jsonl","cwd":"/tmp","hook_event_name":"SessionEnd","reason":"other"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     OV_HOOK_WORKER=1 \
     OPENVIKING_DEBUG=1 \
@@ -168,7 +168,7 @@ ls $STATE_DIR/state/verify-sess.ended.*   # no such file — the marker was clea
 ```bash
 time (echo '{"session_id":"verify-sess","transcript_path":"'"$STATE_DIR"'/transcript.jsonl","cwd":"/tmp","hook_event_name":"SessionEnd","reason":"other"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     node $PLUGIN/scripts/session-end.mjs)
 ```
@@ -191,7 +191,7 @@ printf '%s' "$NOW" > "$STATE_DIR/state/sess-ended.ended.$NOW"
 
 echo '{"session_id":"sess-ccc","source":"startup","cwd":"/tmp","model":"x","permission_mode":"default","transcript_path":null,"hook_event_name":"SessionStart"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     OPENVIKING_DEBUG=1 \
     node $PLUGIN/scripts/session-start-commit.mjs
@@ -214,7 +214,7 @@ mkdir "$STATE_DIR/state/sess-ended.lock"
 
 echo '{"session_id":"sess-fff","source":"startup","cwd":"/tmp","model":"x","permission_mode":"default","transcript_path":null,"hook_event_name":"SessionStart"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     OPENVIKING_DEBUG=1 \
     node $PLUGIN/scripts/session-start-commit.mjs
@@ -238,7 +238,7 @@ EOF
 
 echo '{"session_id":"sess-ddd","source":"startup","cwd":"/tmp","model":"x","permission_mode":"default","transcript_path":null,"hook_event_name":"SessionStart"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     node $PLUGIN/scripts/session-start-commit.mjs
 ```
@@ -256,8 +256,8 @@ active-window heuristic.
 # Re-run the same SessionStart with a 1 s committed TTL.
 echo '{"session_id":"sess-eee","source":"startup","cwd":"/tmp","model":"x","permission_mode":"default","transcript_path":null,"hook_event_name":"SessionStart"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
-    OPENVIKING_CODEX_COMMITTED_TTL_MS=1000 \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_COMMITTED_TTL_MS=1000 \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     OPENVIKING_DEBUG=1 \
     node $PLUGIN/scripts/session-start-commit.mjs
@@ -272,7 +272,7 @@ way — a cursor-only state has nothing left to commit.
 ```bash
 echo '{"session_id":"any","source":"resume","cwd":"/tmp","model":"x","permission_mode":"default","transcript_path":null,"hook_event_name":"SessionStart"}' \
   | OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     node $PLUGIN/scripts/session-start-commit.mjs
 # Expect without an existing archive: hookSpecificOutput.additionalContext
@@ -288,7 +288,7 @@ echo '{"session_id":"any","source":"resume","cwd":"/tmp","model":"x","permission
 echo '{"session_id":"any","source":"startup","cwd":"/tmp","model":"x","permission_mode":"default","transcript_path":null,"hook_event_name":"SessionStart"}' \
   | OPENVIKING_RECALL_COMPRESS_DETECT_ON_STARTUP=0 \
     OPENVIKING_CONFIG_FILE=$OV_CONF \
-    OPENVIKING_CODEX_STATE_DIR=$STATE_DIR/state \
+    OPENVIKING_HOOK_STATE_DIR=$STATE_DIR/state \
     CODEX_PLUGIN_ROOT=$PLUGIN \
     node $PLUGIN/scripts/session-start-commit.mjs
 # Expect: normal SessionStart behavior without spawning `codex exec` for model probing.
@@ -319,4 +319,4 @@ Verify with steps 4 + 7 above.
 
 ---
 
-**Cleanup**: `rm -rf $STATE_DIR && rm -rf ~/.openviking/codex-plugin-state/verify-sess.json`
+**Cleanup**: `rm -rf $STATE_DIR && rm -rf ~/.openviking/hook-state/verify-sess.json`

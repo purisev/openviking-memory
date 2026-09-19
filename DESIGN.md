@@ -17,7 +17,7 @@ events imply "context for a particular codex `session_id` is gone".
   append messages on every `Stop`, and commit it (which triggers OV's
   memory extractor) at session-end-equivalent moments. `/messages`
   auto-creates the OV session, so the plugin does not call session create.
-- **State file** — `~/.openviking/codex-plugin-state/<safe-codex-session-id>.json`,
+- **State file** — `~/.openviking/hook-state/<safe-codex-session-id>.json`,
   shape `{ codexSessionId, ovSessionId, transcriptPath, capturedTurnCount, createdAt, lastUpdatedAt }`.
 - **End marker** — `<safe-codex-session-id>.ended.<timestamp>`, a sidecar written by the
   `SessionEnd` parent hook, containing the timestamp at which it was
@@ -379,10 +379,10 @@ Env var overrides for tuning without rebuilding:
 
 | Var | Default | Purpose |
 |---|---|---|
-| `OPENVIKING_CODEX_STATE_DIR` | `~/.openviking/codex-plugin-state` | state file dir |
-| `OPENVIKING_CODEX_IDLE_TTL_MS` | `1800000` (30 min) | idle sweep TTL |
-| `OPENVIKING_CODEX_LOCK_WAIT_MS` | `120000` (`SessionEnd` worker), `40000` (`PreCompact`) | how long a writer waits for the session lock |
-| `OPENVIKING_CODEX_COMMITTED_TTL_MS` | `2592000000` (30 days) | how long a committed cursor is kept for resume |
+| `OPENVIKING_HOOK_STATE_DIR` | `~/.openviking/hook-state` | state file dir |
+| `OPENVIKING_HOOK_IDLE_TTL_MS` | `1800000` (30 min) | idle sweep TTL |
+| `OPENVIKING_HOOK_LOCK_WAIT_MS` | `120000` (`SessionEnd` worker), `40000` (`PreCompact`) | how long a writer waits for the session lock |
+| `OPENVIKING_HOOK_COMMITTED_TTL_MS` | `2592000000` (30 days) | how long a committed cursor is kept for resume |
 | `OPENVIKING_RECALL_TIMEOUT_MS` | `120000` (2 min) | whole UserPromptSubmit auto-recall deadline |
 | `OPENVIKING_RECALL_COMPRESS` | `1` | set `0` / `off` to skip `codex exec` compression |
 | `OPENVIKING_RECALL_COMPRESS_MODEL` | unset | custom first-choice compressor model; `off` disables compression |
@@ -441,7 +441,7 @@ important for model families whose default effort is tuned by Codex.
 Model availability is re-probed at every `SessionStart`, not in every
 `UserPromptSubmit`. Recreating the profile on each session start catches
 cross-session env/config changes. The detector writes
-`recall-compressor-profile.json` under `OPENVIKING_CODEX_STATE_DIR` and
+`recall-compressor-profile.json` under `OPENVIKING_HOOK_STATE_DIR` and
 auto-recall reads that cache. Before resolving a profile, auto-recall passes
 the injection-ready context through the shared recall-compression core. The
 shared core admits only blocks at or above the configured minimum and reuses a
@@ -470,7 +470,7 @@ Configured `off` (`OPENVIKING_RECALL_COMPRESS=0`, model `off`, or thinking
   states with an `.ended` marker, `idle_ttl` for states past the idle TTL.
 - A per-session `.lock` directory serializes the `Stop` worker,
   `PreCompact`, the `SessionEnd` worker and the sweep, with a new
-  `OPENVIKING_CODEX_LOCK_WAIT_MS` wait budget and a try-lock for the sweep.
+  `OPENVIKING_HOOK_LOCK_WAIT_MS` wait budget and a try-lock for the sweep.
 - The `.ended` sidecar is cleared by any `Stop`, `PreCompact` or
   `source=resume` for that session.
 - `ov-session.mjs` holds the OV HTTP client, transcript reader and catch-up

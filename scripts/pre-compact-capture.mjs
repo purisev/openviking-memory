@@ -27,7 +27,7 @@
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
 import { catchUpTurns, commitOvSession, hasCaptureKeyword, makeFetchJSON } from "./ov-session.mjs";
-import { clearEnded, loadState, saveState, withSessionLock } from "./session-state.mjs";
+import { clearEnded, hookEnv, loadState, saveState, withSessionLock } from "./session-state.mjs";
 import { resolveEffectivePeerId } from "./shared/workspace-peer.mjs";
 
 let cfg = loadConfig();
@@ -36,7 +36,7 @@ let activePeerId = cfg.peerId || "";
 
 // Well inside the 60s hook budget, leaving room for the commit itself.
 const LOCK_WAIT_MS = (() => {
-  const v = Number(process.env.OPENVIKING_CODEX_LOCK_WAIT_MS);
+  const v = Number(hookEnv("LOCK_WAIT_MS"));
   return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 40_000;
 })();
 

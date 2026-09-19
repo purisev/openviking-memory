@@ -169,7 +169,7 @@ test("auto-capture commits when pending tokens cross threshold", async () => {
         {
           OPENVIKING_AUTO_CAPTURE: "1",
           OPENVIKING_CAPTURE_ASSISTANT_TURNS: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_DEBUG: "1",
           OPENVIKING_DEBUG_LOG: debugLogPath,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
@@ -304,7 +304,7 @@ test("auto-capture sends every new turn when one response exceeds the old limit"
         {
           OPENVIKING_AUTO_CAPTURE: "1",
           OPENVIKING_CAPTURE_ASSISTANT_TURNS: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
           OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
           OPENVIKING_CREDENTIAL_SOURCE: "env",
@@ -381,7 +381,7 @@ test("auto-capture logs a commit error trace_id", async () => {
         { session_id: "codex:error", transcript_path: transcriptPath },
         {
           OPENVIKING_AUTO_CAPTURE: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_DEBUG: "1",
           OPENVIKING_DEBUG_LOG: debugLogPath,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
@@ -456,7 +456,7 @@ test("auto-capture skips compacted history after transcript shrink", async () =>
         {
           OPENVIKING_AUTO_CAPTURE: "1",
           OPENVIKING_CAPTURE_ASSISTANT_TURNS: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
           OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
           OPENVIKING_CREDENTIAL_SOURCE: "env",
@@ -507,7 +507,7 @@ test("auto-capture clears a stale session-end marker and never resets the cursor
 
     const env = (baseUrl) => ({
       OPENVIKING_AUTO_CAPTURE: "1",
-      OPENVIKING_CODEX_STATE_DIR: stateDir,
+      OPENVIKING_HOOK_STATE_DIR: stateDir,
       OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
       OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
       OPENVIKING_CREDENTIAL_SOURCE: "env",
@@ -573,7 +573,7 @@ test("a Stop clears only end markers older than the hook run", async () => {
 
     const env = (baseUrl, extra) => ({
       OPENVIKING_AUTO_CAPTURE: "1",
-      OPENVIKING_CODEX_STATE_DIR: stateDir,
+      OPENVIKING_HOOK_STATE_DIR: stateDir,
       OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
       OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
       OPENVIKING_CREDENTIAL_SOURCE: "env",
@@ -647,7 +647,7 @@ test("the workspace that decides capture is the payload's, not the hook process'
     }));
 
     const env = (baseUrl) => ({
-      OPENVIKING_CODEX_STATE_DIR: stateDir,
+      OPENVIKING_HOOK_STATE_DIR: stateDir,
       OPENVIKING_HOME: join(stateDir, "home"),
       OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
       OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
@@ -724,7 +724,7 @@ test("capture filters rewrite and drop turns without stranding the cursor", asyn
       const env = {
         OPENVIKING_AUTO_CAPTURE: "1",
         OPENVIKING_CAPTURE_ASSISTANT_TURNS: "1",
-        OPENVIKING_CODEX_STATE_DIR: stateDir,
+        OPENVIKING_HOOK_STATE_DIR: stateDir,
         OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
         OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
         OPENVIKING_CREDENTIAL_SOURCE: "env",

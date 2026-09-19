@@ -191,7 +191,7 @@ async function runEndpointCompressionCase({
         {
           ...env,
           OPENVIKING_AUTO_RECALL: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_STATE_DIR: stateDir,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
           OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
@@ -265,7 +265,7 @@ test("auto-recall asks the context face with the derived OpenViking session id",
         { prompt: "please use prior context", session_id: "codex:123" },
         {
           OPENVIKING_AUTO_RECALL: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_STATE_DIR: stateDir,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
           OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
@@ -351,7 +351,7 @@ test("auto-recall prefers the server recall endpoint when available", async () =
         { prompt: "please use server recall", session_id: "codex:recall" },
         {
           OPENVIKING_AUTO_RECALL: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_STATE_DIR: stateDir,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
           OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
@@ -496,7 +496,7 @@ test("auto-recall gives the compressor full content from the raw-search fallback
           {
             ...env,
             OPENVIKING_AUTO_RECALL: "1",
-            OPENVIKING_CODEX_STATE_DIR: stateDir,
+            OPENVIKING_HOOK_STATE_DIR: stateDir,
             OPENVIKING_STATE_DIR: stateDir,
             OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
             OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
@@ -660,7 +660,7 @@ test("auto-recall expands configured user in memory search target", async () => 
         { prompt: "please use configured user memory", session_id: "codex:456" },
         {
           OPENVIKING_AUTO_RECALL: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_STATE_DIR: stateDir,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
           OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
@@ -746,7 +746,7 @@ test("auto-recall preserves explicit default user memory target", async () => {
         { prompt: "please use default user memory", session_id: "codex:789" },
         {
           OPENVIKING_AUTO_RECALL: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_STATE_DIR: stateDir,
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
           OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),
@@ -814,7 +814,7 @@ test("the actor peer comes from the workspace named by the payload's cwd", async
         { prompt: "what did we decide", session_id: "codex:peer", cwd: workspaceDir },
         {
           OPENVIKING_AUTO_RECALL: "1",
-          OPENVIKING_CODEX_STATE_DIR: stateDir,
+          OPENVIKING_HOOK_STATE_DIR: stateDir,
           OPENVIKING_STATE_DIR: stateDir,
           OPENVIKING_HOME: join(stateDir, "home"),
           OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
@@ -838,7 +838,7 @@ test("the actor peer comes from the workspace named by the payload's cwd", async
 function filterEnv(stateDir, baseUrl, filters) {
   return {
     OPENVIKING_AUTO_RECALL: "1",
-    OPENVIKING_CODEX_STATE_DIR: stateDir,
+    OPENVIKING_HOOK_STATE_DIR: stateDir,
     OPENVIKING_STATE_DIR: stateDir,
     OPENVIKING_CONFIG_FILE: join(stateDir, "missing-ov.conf"),
     OPENVIKING_CLI_CONFIG_FILE: join(stateDir, "missing-ovcli.conf"),

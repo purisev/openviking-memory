@@ -1,7 +1,6 @@
 /**
- * Claude Code side of the memory doctor: which host the doctor is looking at,
- * and whether Claude Code has this plugin installed, enabled and able to run
- * its hooks.
+ * Claude Code side of the memory doctor: whether Claude Code has this plugin
+ * installed, enabled and able to run its hooks.
  *
  * Claude Code keeps no per-hook trust records, so the install check is about
  * the plugin registry (`claude plugin list --json`, else the files behind it),
@@ -9,15 +8,10 @@
  */
 
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve as resolvePath, sep } from "node:path";
+import { join } from "node:path";
 
+import { claudeConfigDir, isInside } from "./harness.mjs";
 import { existsPath, homeShort, runCommand } from "./shared/doctor-core.mjs";
-
-export const HARNESSES = {
-  codex: { id: "codex", label: "Codex" },
-  claudeCode: { id: "claude-code", label: "Claude Code" },
-};
 
 const PLUGIN_NAME = "openviking-memory";
 const REQUIRED_PLUGIN_FILES = [".claude-plugin/plugin.json", "hooks/hooks.json", "servers/mcp-proxy.mjs", "scripts/config.mjs", "scripts/auto-recall.mjs", "scripts/auto-capture.mjs", "scripts/session-end.mjs", "scripts/ov-session.mjs"];
@@ -29,37 +23,6 @@ function tryJson(path) {
   } catch {
     return null;
   }
-}
-
-function isInside(path, dir) {
-  const base = resolvePath(dir);
-  return path === base || path.startsWith(base + sep);
-}
-
-export function claudeConfigDir(env = process.env, home = homedir()) {
-  return env.CLAUDE_CONFIG_DIR || join(home, ".claude");
-}
-
-export function parseHarness(value) {
-  const name = String(value || "").toLowerCase().replace(/_/g, "-");
-  if (name === "codex") return HARNESSES.codex;
-  if (name === "claude-code" || name === "claude" || name === "cc") return HARNESSES.claudeCode;
-  return null;
-}
-
-/**
- * Precedence: an explicit choice, then where this copy of the plugin lives (a
- * host's plugin cache is unambiguous), then the process environment — Claude
- * Code exports CLAUDECODE to everything it spawns. A bare checkout run from a
- * plain shell is diagnosed as Codex.
- */
-export function detectHarness({ explicit, pluginRoot, env = process.env, home = homedir() } = {}) {
-  const chosen = parseHarness(explicit);
-  if (chosen) return chosen;
-  if (pluginRoot && isInside(pluginRoot, join(claudeConfigDir(env, home), "plugins"))) return HARNESSES.claudeCode;
-  if (pluginRoot && isInside(pluginRoot, join(home, ".codex"))) return HARNESSES.codex;
-  if (env.CLAUDECODE || env.CLAUDE_PLUGIN_ROOT) return HARNESSES.claudeCode;
-  return HARNESSES.codex;
 }
 
 /** Hook commands that Claude Code cannot resolve to a script inside the plugin. */
