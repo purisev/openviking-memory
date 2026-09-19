@@ -97,7 +97,7 @@ claude plugin install openviking-memory@openviking-memory
 
 From a local checkout, use `claude plugin marketplace add <checkout>` instead, or load it for one session with `claude --plugin-dir <checkout>`. `claude plugin validate <checkout>` checks the manifests.
 
-Claude Code needs `node` on `PATH` for the hooks and the MCP proxy. Connection settings come from the same `~/.openviking/ovcli.conf` / `OPENVIKING_*` sources as under Codex, and plugin tuning is read from the `plugin.codex` section there. `scripts/ov-memory-doctor.mjs` inspects a Codex installation only.
+Claude Code needs `node` on `PATH` for the hooks and the MCP proxy. Connection settings come from the same `~/.openviking/ovcli.conf` / `OPENVIKING_*` sources as under Codex, and plugin tuning is read from the `plugin.codex` section there. `node scripts/ov-memory-doctor.mjs --harness claude-code` checks the Claude Code install (plugin registry, enablement, `disableAllHooks`, hook commands); inside a Claude Code session the host is detected without the flag.
 
 ### Manual setup
 
