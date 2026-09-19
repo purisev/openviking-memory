@@ -18,6 +18,12 @@
  * helpers running after the hook exits.
  *
  * SessionEnd output is ignored; we print `{}` for symmetry with the other hooks.
+ *
+ * SubagentStop runs this hook too. Hooks do not fire inside a subagent, so its
+ * end is the one chance to capture it: the subagent is treated as a session of
+ * its own, identified by the parent session and the agent id, whose transcript
+ * is `agent_transcript_path`. Its turns land in a separate OV session and are
+ * committed at once, and the same sweep retries them if the server is down.
  */
 
 import { loadConfig } from "./config.mjs";
@@ -30,6 +36,7 @@ import {
   markEnded,
   readEndedAt,
   saveState,
+  sessionOf,
   withSessionLock,
 } from "./session-state.mjs";
 import { maybeDetach, readHookStdin } from "./shared/async-writer.mjs";
@@ -161,8 +168,7 @@ async function main() {
     return;
   }
 
-  const sessionId = input.session_id;
-  const transcriptPath = input.transcript_path || null;
+  const { sessionId, transcriptPath } = sessionOf(input);
   // The workspace layer belongs to the session's directory, which only the
   // payload knows; see loadConfig for why re-resolving this late is safe.
   const cwd = typeof input.cwd === "string" && input.cwd.trim() ? input.cwd : process.cwd();

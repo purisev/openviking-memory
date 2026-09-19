@@ -72,6 +72,17 @@ function safeId(codexSessionId) {
   return String(codexSessionId).replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+/** The session a hook event is about: the subagent's own for SubagentStop, else the thread's. */
+export function sessionOf(input = {}) {
+  if (input.hook_event_name === "SubagentStop" && input.session_id && input.agent_id) {
+    return {
+      sessionId: `${input.session_id}-agent-${input.agent_id}`,
+      transcriptPath: input.agent_transcript_path || null,
+    };
+  }
+  return { sessionId: input.session_id, transcriptPath: input.transcript_path || null };
+}
+
 export function deriveOvSessionId(codexSessionId) {
   return deriveCodexSessionId(codexSessionId);
 }

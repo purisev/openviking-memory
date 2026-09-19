@@ -1,6 +1,6 @@
 {
   "name": "openviking-memory",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Long-term semantic memory for Claude Code, powered by OpenViking. Recall on UserPromptSubmit, incremental add_message on Stop (per turn), commit on SessionEnd and PreCompact, with an idle/ended sweep on SessionStart. Includes a local stdio MCP proxy that reads OpenViking credentials from env/ovcli.conf.",
   "author": {
     "name": "purisev",

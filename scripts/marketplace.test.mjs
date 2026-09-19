@@ -177,6 +177,15 @@ test("SessionStart checks for node from sh, in a group of its own", () => {
   assert.ok(existsSync(join(pluginDir, "scripts", "preflight.sh")));
 });
 
+test("hooks.json covers compaction, subagents and viking:// URIs handed to local tools", () => {
+  const hooks = JSON.parse(readFileSync(join(pluginDir, "hooks", "hooks.json"), "utf-8")).hooks;
+  for (const group of hooks.SessionStart) assert.match(group.matcher, /\bcompact\b/);
+  // A subagent's end runs the SessionEnd flow against the subagent's own session.
+  assert.match(hooks.SubagentStop[0].hooks[0].command, /session-end\.mjs/);
+  assert.match(hooks.PreToolUse[0].hooks[0].command, /uri-guard\.mjs/);
+  assert.match(hooks.PreToolUse[0].matcher, /\bRead\b.*\bBash\b/);
+});
+
 test("hooks.json registers SessionEnd within Codex's clamped budget", () => {
   const parsed = JSON.parse(readFileSync(join(pluginDir, "hooks", "hooks.json"), "utf-8"));
   const entries = (parsed.hooks?.SessionEnd || []).flatMap((group) => group.hooks || []);

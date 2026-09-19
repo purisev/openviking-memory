@@ -3,11 +3,13 @@
 /**
  * SessionStart hook for Codex.
  *
- * Triggers (matcher = "clear|startup|resume" in hooks.json):
+ * Triggers (matcher = "clear|startup|resume|compact" in hooks.json):
  *   - source=startup → fresh codex CLI / `/new` / zouk daemon spawn-without-sessionId
  *   - source=clear   → `/clear` (orphans the current process's previous session)
  *   - source=resume  → `/resume` or short reconnect (no commit/sweep;
  *     may inject latest archive summary if the live OV session was already committed)
+ *   - source=compact → the host has just summarized the context. PreCompact committed the
+ *     session beforehand, so the profile and the archive summary are injected again, as on resume
  *
  * Every source injects the shared OpenViking profile block unless
  * OPENVIKING_NO_AUTO_INJECT=1. The block contains profile.md plus
@@ -370,7 +372,7 @@ async function main() {
     logError("compress_profile_detect_uncaught", err);
   }
 
-  if (source === "resume") {
+  if (source === "resume" || source === "compact") {
     // Earliest liveness signal after `codex resume`: the thread is running
     // again, so a marker left by its previous exit must not trigger the sweep.
     await clearEnded(newSessionId, { before: HOOK_STARTED_AT });
