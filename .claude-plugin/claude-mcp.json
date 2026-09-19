@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "openviking-memory": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/servers/mcp-proxy.mjs"
+      ],
+      "startup_timeout_sec": 30
+    }
+  }
+}

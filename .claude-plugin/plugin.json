@@ -1,0 +1,14 @@
+{
+  "name": "openviking-memory",
+  "version": "0.8.3+claude-code.local",
+  "description": "Long-term semantic memory for Claude Code, powered by OpenViking. Recall on UserPromptSubmit, incremental add_message on Stop (per turn), commit on SessionEnd and PreCompact, with an idle/ended sweep on SessionStart. Includes a local stdio MCP proxy that reads OpenViking credentials from env/ovcli.conf.",
+  "author": {
+    "name": "purisev",
+    "url": "https://github.com/purisev/openviking-memory"
+  },
+  "repository": "https://github.com/purisev/openviking-memory",
+  "license": "Apache-2.0",
+  "keywords": ["memory", "openviking", "semantic-search", "long-term-memory", "context-engine"],
+  "mcpServers": "./.claude-plugin/claude-mcp.json",
+  "skills": "./skills/"
+}

@@ -20,7 +20,7 @@ It also starts a local stdio MCP proxy that forwards to OpenViking's native `/mc
 
 ## Quick Start
 
-There are two install paths. **Pick one — don't mix them** (both surface the same `openviking-memory` plugin; enabling it from both would run the hooks twice). The **one-line installer (A)** is the recommended path for most users; the marketplace install (B) is useful when you already manage `~/.openviking/ovcli.conf` yourself.
+Codex has two install paths (A and B). **Pick one — don't mix them** (both surface the same `openviking-memory` plugin; enabling it from both would run the hooks twice). The **one-line installer (A)** is the recommended path for most users; the marketplace install (B) is useful when you already manage `~/.openviking/ovcli.conf` yourself. Claude Code installs the same plugin through its own marketplace (C).
 
 ### A. One-line installer — `curl | bash` (recommended)
 
@@ -81,10 +81,23 @@ codex            # then run /hooks inside Codex to review & approve the hooks
 
 > **Requirements & notes**
 >
-> - **Codex version**: this path relies on Codex injecting and inline-substituting `${PLUGIN_ROOT}` in plugin hook commands (current Codex does both). On an older Codex that doesn't substitute `${PLUGIN_ROOT}`, the hook script paths won't resolve — use path **A**.
+> - **Codex version**: this path relies on Codex injecting and inline-substituting `${CLAUDE_PLUGIN_ROOT}` in plugin hook commands (Codex provides it next to `${PLUGIN_ROOT}`). On an older Codex that substitutes neither, the hook script paths won't resolve — use path **A**.
 > - **Catalog source**: the catalog entry (`.agents/plugins/marketplace.json`) uses a relative source (`./examples/codex-memory-plugin`). `codex plugin add` therefore installs the plugin from the same marketplace snapshot/ref that you added. This keeps fork, branch, tag, and upstream-main installs reproducible and testable without rewriting the catalog.
 
 This path works out of the box against an unauthenticated local OpenViking at `http://127.0.0.1:1933`. For remote/cloud servers, create `~/.openviking/ovcli.conf` with `url`, `api_key`, and optional `account` / `user`; the proxy reads it when Codex starts.
+
+### C. Claude Code marketplace install
+
+The repository root doubles as a Claude Code marketplace (`.claude-plugin/marketplace.json`) whose single plugin is the repository itself:
+
+```bash
+claude plugin marketplace add purisev/openviking-memory
+claude plugin install openviking-memory@openviking-memory
+```
+
+From a local checkout, use `claude plugin marketplace add <checkout>` instead, or load it for one session with `claude --plugin-dir <checkout>`. `claude plugin validate <checkout>` checks the manifests.
+
+Claude Code needs `node` on `PATH` for the hooks and the MCP proxy. Connection settings come from the same `~/.openviking/ovcli.conf` / `OPENVIKING_*` sources as under Codex, and plugin tuning is read from the `plugin.codex` section there. `scripts/ov-memory-doctor.mjs` inspects a Codex installation only.
 
 ### Manual setup
 
@@ -103,7 +116,7 @@ If you don't want the installer touching your rc, do these things yourself:
 
    Or run the bundled interactive wizard: `node scripts/setup.mjs` (from the plugin directory).
 
-2. **Add the plugin** via the remote marketplace (path B above), or via a local directory marketplace: `codex plugin marketplace add <checkout>/examples` reads `examples/.agents/plugins/marketplace.json` and yields the same `openviking-memory@openviking` id. `hooks/hooks.json` needs no rendering on modern Codex: it uses the native `${PLUGIN_ROOT}` token, which Codex injects into the hook env and substitutes inline.
+2. **Add the plugin** via the remote marketplace (path B above), or via a local directory marketplace: `codex plugin marketplace add <checkout>/examples` reads `examples/.agents/plugins/marketplace.json` and yields the same `openviking-memory@openviking` id. `hooks/hooks.json` needs no rendering on modern Codex: it uses the `${CLAUDE_PLUGIN_ROOT}` token, which Codex injects into the hook env and substitutes inline.
 
 ## Configuration
 
@@ -380,11 +393,15 @@ Or invoke the `$ov-memory-doctor` skill in Codex, which runs the same script and
 ```
 codex-memory-plugin/
 ├── .codex-plugin/
-│   └── plugin.json              # Plugin manifest (hooks + mcp wiring)
+│   └── plugin.json              # Codex plugin manifest (mcp wiring)
+├── .claude-plugin/
+│   ├── plugin.json              # Claude Code plugin manifest
+│   ├── marketplace.json         # Claude Code marketplace; its one plugin is this directory
+│   └── claude-mcp.json          # stdio MCP wiring rooted at ${CLAUDE_PLUGIN_ROOT}
 ├── hooks/
 │   └── hooks.json               # SessionStart + UserPromptSubmit + Stop + SessionEnd
-│                                  + PreCompact (uses Codex's native ${PLUGIN_ROOT}
-│                                   token; no rendering needed on modern Codex)
+│                                  + PreCompact; both hosts discover this path and
+│                                  expand ${CLAUDE_PLUGIN_ROOT}
 ├── skills/
 │   ├── openviking-memory/       # How to use the memory tools
 │   ├── ov-experience-memory/
@@ -408,7 +425,7 @@ codex-memory-plugin/
 │   └── mcp-proxy.test.mjs       # proxy contract tests
 ├── setup-helper/
 │   └── install.sh               # One-line installer
-├── .mcp.json                    # stdio MCP wiring
+├── .mcp.json                    # stdio MCP wiring (Codex)
 ├── DESIGN.md
 ├── VERIFICATION.md
 └── README.md
@@ -422,7 +439,7 @@ The Codex marketplace catalog that exposes this plugin for `codex plugin marketp
 
 | Aspect | Claude Code Plugin | Codex Plugin |
 |--------|--------------------|--------------|
-| Plugin root env var | `CLAUDE_PLUGIN_ROOT` (expanded by CC) | `${PLUGIN_ROOT}` (injected into hook env + substituted inline by modern Codex; installer also renders it to absolute paths for older Codex) |
+| Plugin root env var | `CLAUDE_PLUGIN_ROOT` (expanded by CC) | `${CLAUDE_PLUGIN_ROOT}`, which modern Codex injects into the hook env and substitutes inline alongside its own `${PLUGIN_ROOT}` |
 | `UserPromptSubmit` injection | `decision: "approve"` + `hookSpecificOutput.additionalContext` | `hookSpecificOutput.additionalContext` only — `approve` is not a Codex output |
 | `Stop` decision | `decision: "approve"` no-op | `{}` no-op — only `block` is a valid Codex `decision` |
 | Compaction hook | n/a (Claude Code does not expose one) | `PreCompact` — full-transcript commit before context loss |

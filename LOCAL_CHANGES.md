@@ -40,7 +40,9 @@ Memory and long-term extraction. No server/model changes were made.
 - A threshold schedules work; it does not guarantee immediate processing when
   another extraction job is running. Later writes/lifecycle commits retry.
 - Already queued jobs retain their original policy snapshot.
-- This patch covers Codex capture, not Claude Code's separate memory plugin.
+- The session batching patch was validated under Codex. Claude Code runs the
+  same hook scripts through `.claude-plugin/` and reads the same
+  `plugin.codex` settings.
   The independent wiki plugin and shared/private wiki rules are unchanged.
 
 ## Validation and deployment
@@ -50,6 +52,9 @@ retry/failure behavior, manual commit, session end, compaction, recovery,
 credentials, MCP proxy and recall. See platform `docs/SESSION_BATCHING.md`.
 Codex manifest normalization removes the unsupported `hooks` field (the default
 `hooks/hooks.json` is discovered automatically) and adds `interface.defaultPrompt`.
+Claude Code discovers the same `hooks/hooks.json`, so its commands use
+`${CLAUDE_PLUGIN_ROOT}`: Claude Code expands only that token, and Codex injects it
+next to `${PLUGIN_ROOT}`.
 The local doctor recognizes the personal marketplace and the new setting.
 
 Install from the personal marketplace, with only one memory plugin enabled:
