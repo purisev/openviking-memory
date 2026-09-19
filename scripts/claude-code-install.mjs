@@ -1,0 +1,152 @@
+/**
+ * Claude Code side of the memory doctor: which host the doctor is looking at,
+ * and whether Claude Code has this plugin installed, enabled and able to run
+ * its hooks.
+ *
+ * Claude Code keeps no per-hook trust records, so the install check is about
+ * the plugin registry (`claude plugin list --json`, else the files behind it),
+ * the hook commands, and the settings switch that silences every hook.
+ */
+
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve as resolvePath, sep } from "node:path";
+
+import { existsPath, homeShort, runCommand } from "./shared/doctor-core.mjs";
+
+export const HARNESSES = {
+  codex: { id: "codex", label: "Codex" },
+  claudeCode: { id: "claude-code", label: "Claude Code" },
+};
+
+const PLUGIN_NAME = "openviking-memory";
+const REQUIRED_PLUGIN_FILES = [".claude-plugin/plugin.json", "hooks/hooks.json", "servers/mcp-proxy.mjs", "scripts/config.mjs", "scripts/auto-recall.mjs", "scripts/auto-capture.mjs", "scripts/session-end.mjs", "scripts/ov-session.mjs"];
+const INSTALL_FIX = "claude plugin marketplace add purisev/openviking-memory && claude plugin install openviking-memory@openviking-memory";
+
+function tryJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function isInside(path, dir) {
+  const base = resolvePath(dir);
+  return path === base || path.startsWith(base + sep);
+}
+
+export function claudeConfigDir(env = process.env, home = homedir()) {
+  return env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+}
+
+export function parseHarness(value) {
+  const name = String(value || "").toLowerCase().replace(/_/g, "-");
+  if (name === "codex") return HARNESSES.codex;
+  if (name === "claude-code" || name === "claude" || name === "cc") return HARNESSES.claudeCode;
+  return null;
+}
+
+/**
+ * Precedence: an explicit choice, then where this copy of the plugin lives (a
+ * host's plugin cache is unambiguous), then the process environment — Claude
+ * Code exports CLAUDECODE to everything it spawns. A bare checkout run from a
+ * plain shell is diagnosed as Codex.
+ */
+export function detectHarness({ explicit, pluginRoot, env = process.env, home = homedir() } = {}) {
+  const chosen = parseHarness(explicit);
+  if (chosen) return chosen;
+  if (pluginRoot && isInside(pluginRoot, join(claudeConfigDir(env, home), "plugins"))) return HARNESSES.claudeCode;
+  if (pluginRoot && isInside(pluginRoot, join(home, ".codex"))) return HARNESSES.codex;
+  if (env.CLAUDECODE || env.CLAUDE_PLUGIN_ROOT) return HARNESSES.claudeCode;
+  return HARNESSES.codex;
+}
+
+/** Hook commands that Claude Code cannot resolve to a script inside the plugin. */
+export function unresolvableHookCommands(hooksConfig) {
+  return Object.values(hooksConfig?.hooks || {})
+    .flat()
+    .flatMap((group) => group?.hooks || [])
+    .map((hook) => hook?.command || "")
+    .filter((command) => command && !command.includes("${CLAUDE_PLUGIN_ROOT}"));
+}
+
+/** Rows shaped like `claude plugin list --json`, rebuilt from the files behind it. */
+export function readInstalledPlugins(configDir) {
+  const installed = tryJson(join(configDir, "plugins", "installed_plugins.json"))?.plugins;
+  if (!installed || typeof installed !== "object") return null;
+  const enabled = tryJson(join(configDir, "settings.json"))?.enabledPlugins || {};
+  return Object.entries(installed).flatMap(([id, installs]) =>
+    (Array.isArray(installs) ? installs : []).map((install) => ({ ...install, id, enabled: enabled[id] === true })));
+}
+
+export function assessInstalledPlugins(rows, { version }) {
+  const mine = (rows || []).filter((row) => String(row?.id || "").split("@")[0] === PLUGIN_NAME);
+  if (!mine.length) {
+    return [{
+      level: "warn",
+      message: `Claude Code has no installed ${PLUGIN_NAME} plugin`,
+      detail: "only a session started with `claude --plugin-dir <checkout>` loads it",
+      fix: INSTALL_FIX,
+    }];
+  }
+  const findings = [];
+  const enabled = mine.filter((row) => row.enabled !== false);
+  for (const row of mine) {
+    const where = `${row.id} ${row.version || "?"} (${row.scope || "?"} scope)`;
+    if (row.enabled === false) findings.push({ level: "fail", message: `${where} is installed but disabled`, fix: `claude plugin enable ${row.id}` });
+    else findings.push({ level: "ok", message: `${where} installed, enabled` });
+    if (row.installPath && !existsPath(row.installPath)) findings.push({ level: "fail", message: "installed copy no longer exists on disk", detail: homeShort(row.installPath), fix: `claude plugin uninstall ${row.id} && claude plugin install ${row.id}` });
+    else if (row.installPath) findings.push({ level: "info", message: `installed copy: ${homeShort(row.installPath)}` });
+    if (row.enabled !== false && row.version && version && row.version !== version) findings.push({ level: "warn", message: `installed plugin ${row.version} differs from this copy (${version})`, detail: "Claude Code runs hooks from the installed copy", fix: `claude plugin update ${row.id} and restart Claude Code` });
+  }
+  if (enabled.length > 1) findings.push({ level: "warn", message: `more than one copy of ${PLUGIN_NAME} is enabled`, detail: enabled.map((row) => `${row.id} (${row.scope || "?"})`).join(", "), fix: "disable the stale one or hooks fire twice" });
+  return findings;
+}
+
+/** Settings files in which `disableAllHooks` silences the plugin's hooks. */
+export function settingsDisablingHooks(configDir, cwd = process.cwd()) {
+  return [
+    join(configDir, "settings.json"),
+    join(cwd, ".claude", "settings.json"),
+    join(cwd, ".claude", "settings.local.json"),
+  ].filter((path) => tryJson(path)?.disableAllHooks === true);
+}
+
+export function checkClaudeCodeEnvironment(report) {
+  const claude = runCommand("claude", ["--version"], { timeoutMs: 15000 });
+  if (claude.ok) report.ok(`claude ${claude.stdout.split("\n")[0]}`);
+  else report.info(`claude CLI not found on PATH (${claude.error || "?"}) — the plugin registry is read from disk instead`);
+  return { claudeOnPath: claude.ok };
+}
+
+export function checkClaudeCodeInstall(report, { pluginRoot, claudeOnPath }) {
+  report.section("Plugin install");
+  const configDir = claudeConfigDir();
+  const version = tryJson(join(pluginRoot, ".claude-plugin", "plugin.json"))?.version || "?";
+  const inCache = isInside(pluginRoot, join(configDir, "plugins"));
+  report.info(`running from ${homeShort(pluginRoot)} (version ${version}, ${inCache ? "plugin cache" : "checkout / --plugin-dir directory"})`);
+
+  const missing = REQUIRED_PLUGIN_FILES.filter((rel) => !existsPath(join(pluginRoot, rel)));
+  if (missing.length) report.fail("plugin files missing", missing.join(", "), "reinstall the plugin");
+  else report.ok("plugin files present (manifest, hooks, MCP proxy, scripts)");
+
+  const unresolvable = unresolvableHookCommands(tryJson(join(pluginRoot, "hooks", "hooks.json")));
+  if (unresolvable.length) report.fail("hook commands are not rooted at ${CLAUDE_PLUGIN_ROOT}", unresolvable.join("\n"), "Claude Code expands no other plugin-root token; update the plugin");
+
+  let rows = null;
+  if (claudeOnPath) {
+    const list = runCommand("claude", ["plugin", "list", "--json"], { timeoutMs: 30000 });
+    try {
+      rows = list.ok ? JSON.parse(list.stdout) : null;
+    } catch { /* fall back to the registry files */ }
+    if (!Array.isArray(rows)) report.info(`claude plugin list --json gave no usable list (${list.error || list.stderr.split("\n")[0] || "unparseable output"})`);
+  }
+  if (!Array.isArray(rows)) rows = readInstalledPlugins(configDir);
+  if (!Array.isArray(rows)) report.warn(`no plugin registry under ${homeShort(configDir)}`, "Claude Code has never installed a plugin on this machine", INSTALL_FIX);
+  else for (const f of assessInstalledPlugins(rows, { version })) report[f.level](f.message, f.detail, f.fix);
+
+  const silenced = settingsDisablingHooks(configDir);
+  if (silenced.length) report.fail("disableAllHooks is set", silenced.map(homeShort).join(", "), "remove disableAllHooks — no plugin hook fires while it is true");
+  return {};
+}

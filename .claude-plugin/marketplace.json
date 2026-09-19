@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "openviking-memory",
+  "description": "Long-term semantic memory for Claude Code, powered by OpenViking.",
+  "owner": {
+    "name": "purisev",
+    "url": "https://github.com/purisev"
+  },
+  "plugins": [
+    {
+      "name": "openviking-memory",
+      "description": "Hooks Claude Code's lifecycle to keep an external semantic memory in OpenViking: recall on each prompt, incremental capture per turn, commit on session end / pre-compact.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

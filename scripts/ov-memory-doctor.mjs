@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Client-side diagnostics for the OpenViking Codex memory plugin.
+ * Client-side diagnostics for the OpenViking memory plugin under Codex or
+ * Claude Code.
  *
- * Covers the plugin install (marketplace, config.toml enablement, hook trust
- * state, MCP wiring), the client config (which file won, is the JSON valid,
+ * Covers the plugin install (Codex: marketplace, config.toml enablement, hook
+ * trust state, MCP wiring; Claude Code: plugin registry, enablement, hook
+ * commands), the client config (which file won, is the JSON valid,
  * what the key claims) and the connection to the server (reachability, auth,
  * tenant-data access, /mcp), plus the runtime evidence the hooks leave in
  * ~/.openviking/codex-plugin-state. When the server runs on this machine
@@ -12,7 +14,9 @@
  * the port, plugin-only keys in ov.conf and `GET /ready`. Provider-level validation stays with `openviking-server doctor`.
  *
  * Usage:
- *   node ov-memory-doctor.mjs [--json] [--offline] [--timeout <ms>] [--no-color]
+ *   node ov-memory-doctor.mjs [--harness codex|claude-code] [--json] [--offline] [--timeout <ms>] [--no-color]
+ *
+ * Without --harness the host is detected; see detectHarness().
  *
  * Exit code 1 when any check fails, 0 otherwise. Never prints a full api key.
  */
@@ -22,6 +26,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { checkClaudeCodeEnvironment, checkClaudeCodeInstall, detectHarness, HARNESSES, parseHarness } from "./claude-code-install.mjs";
 import { loadConfig } from "./config.mjs";
 import { getStateDir } from "./session-state.mjs";
 import {
@@ -65,15 +70,21 @@ const RC_MARKERS = ["# >>> openviking-codex-plugin >>>", "codex-plugin.rc.sh"];
 const REQUIRED_PLUGIN_FILES = [".codex-plugin/plugin.json", "hooks/hooks.json", ".mcp.json", "servers/mcp-proxy.mjs", "scripts/config.mjs", "scripts/auto-recall.mjs", "scripts/auto-capture.mjs", "scripts/session-end.mjs", "scripts/ov-session.mjs"];
 
 function parseArgs(argv) {
-  const opts = { json: false, offline: false, timeoutMs: 5000, color: process.stdout.isTTY && !process.env.NO_COLOR };
+  const opts = { json: false, offline: false, harness: "", timeoutMs: 5000, color: process.stdout.isTTY && !process.env.NO_COLOR };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") opts.json = true;
     else if (arg === "--offline" || arg === "--no-network") opts.offline = true;
     else if (arg === "--no-color") opts.color = false;
-    else if (arg === "--timeout") opts.timeoutMs = Math.max(1000, Number(argv[++i]) || 5000);
+    else if (arg === "--harness") {
+      opts.harness = argv[++i] || "";
+      if (!parseHarness(opts.harness)) {
+        console.error(`unknown --harness "${opts.harness}" (expected codex or claude-code)`);
+        process.exit(2);
+      }
+    } else if (arg === "--timeout") opts.timeoutMs = Math.max(1000, Number(argv[++i]) || 5000);
     else if (arg === "-h" || arg === "--help") {
-      console.log("usage: ov-memory-doctor.mjs [--json] [--offline] [--timeout <ms>] [--no-color]");
+      console.log("usage: ov-memory-doctor.mjs [--harness codex|claude-code] [--json] [--offline] [--timeout <ms>] [--no-color]");
       process.exit(0);
     }
   }
@@ -129,17 +140,18 @@ function readToml(path) {
 // Sections
 // ---------------------------------------------------------------------------
 
-function checkEnvironment(report) {
+function checkEnvironment(report, host) {
   report.section("Environment");
   const nodeMajor = parseNodeMajor(process.version);
   if (nodeMajor >= 18) report.ok(`node ${process.version} (${process.execPath})`);
   else report.fail(`node ${process.version} is too old`, "hooks and the MCP proxy need Node.js 18+ (global fetch)", "install Node.js 18 or newer");
-  if (!whichCommand("node")) report.warn("`node` is not on PATH for this process", "hooks and .mcp.json invoke the bare command `node`", "put node on PATH for the environment that launches Codex");
+  if (!whichCommand("node")) report.warn("`node` is not on PATH for this process", "hooks and the MCP config invoke the bare command `node`", `put node on PATH for the environment that launches ${host.label}`);
+  report.info(`platform ${process.platform} ${process.arch}, cwd ${homeShort(process.cwd())}`);
+  if (host === HARNESSES.claudeCode) return checkClaudeCodeEnvironment(report);
 
   const codex = runCommand("codex", ["--version"], { timeoutMs: 15000 });
   if (codex.ok) report.ok(codex.stdout.split("\n")[0]);
   else report.info(`codex CLI not found on PATH (${codex.error || "?"}) — install checks that need it are skipped`);
-  report.info(`platform ${process.platform} ${process.arch}, cwd ${homeShort(process.cwd())}`);
   return { codexOnPath: codex.ok };
 }
 
@@ -371,7 +383,7 @@ function credentialSources(cfg, cliConf, ovConf) {
   return { url, apiKey, account, user };
 }
 
-function checkConfig(report, cfg) {
+function checkConfig(report, cfg, host) {
   report.section("Configuration");
   const expand = (p) => (p ? resolvePath(p.replace(/^~(?=$|\/)/, homedir())) : p);
   const cliPath = expand(process.env.OPENVIKING_CLI_CONFIG_FILE || join(homedir(), ".openviking", "ovcli.conf"));
@@ -393,7 +405,7 @@ function checkConfig(report, cfg) {
         for (const { key, suggestion } of unknownPluginKeys(conf.data.plugin)) {
           report.warn(`ovcli.conf ${key} is not a knob any plugin reads`, "", suggestion ? `did you mean ${suggestion}?` : "remove it, or check the plugin README for the knob you meant");
         }
-        if (conf.data.plugin?.claude_code && !conf.data.plugin?.codex) report.info("ovcli.conf plugin.claude_code settings do not apply to Codex (use plugin.codex)");
+        if (conf.data.plugin?.claude_code && !conf.data.plugin?.codex) report.info("ovcli.conf plugin.claude_code settings are not read by this plugin under either host (use plugin.codex)");
       }
       if (label === "ov.conf" && conf.data.codex) report.info("ov.conf has a legacy codex block (still honoured; prefer ovcli.conf plugin.codex or env vars)");
     }
@@ -451,8 +463,8 @@ function checkConfig(report, cfg) {
   report.info(`timeouts ${cfg.timeoutMs}ms request, ${cfg.recallTimeoutMs}ms recall, ${cfg.captureTimeoutMs}ms capture; recall limit ${cfg.recallLimit}, threshold ${cfg.scoreThreshold}`);
   const hooks = tryJson(join(PLUGIN_ROOT, "hooks", "hooks.json"))?.hooks || {};
   const budget = (event) => Number(hooks[event]?.[0]?.hooks?.[0]?.timeout) * 1000 || 0;
-  if (budget("UserPromptSubmit") && cfg.recallTimeoutMs > budget("UserPromptSubmit")) report.warn(`recall timeout ${cfg.recallTimeoutMs}ms exceeds the UserPromptSubmit hook budget ${budget("UserPromptSubmit")}ms`, "Codex kills the hook before the request can finish", "lower OPENVIKING_RECALL_TIMEOUT_MS");
-  if (budget("Stop") && cfg.captureTimeoutMs > budget("Stop")) report.warn(`capture timeout ${cfg.captureTimeoutMs}ms exceeds the Stop hook budget ${budget("Stop")}ms`, "Codex kills the hook before the request can finish", "lower OPENVIKING_CAPTURE_TIMEOUT_MS");
+  if (budget("UserPromptSubmit") && cfg.recallTimeoutMs > budget("UserPromptSubmit")) report.warn(`recall timeout ${cfg.recallTimeoutMs}ms exceeds the UserPromptSubmit hook budget ${budget("UserPromptSubmit")}ms`, `${host.label} kills the hook before the request can finish`, "lower OPENVIKING_RECALL_TIMEOUT_MS");
+  if (budget("Stop") && cfg.captureTimeoutMs > budget("Stop")) report.warn(`capture timeout ${cfg.captureTimeoutMs}ms exceeds the Stop hook budget ${budget("Stop")}ms`, `${host.label} kills the hook before the request can finish`, "lower OPENVIKING_CAPTURE_TIMEOUT_MS");
 
   const toggles = [`auto-inject ${cfg.noAutoInject ? "OFF" : "on"}`, `auto-recall ${cfg.autoRecall ? "on" : "OFF"}`, `auto-capture ${cfg.autoCapture ? "on" : "OFF"}`, `commit on compact ${cfg.autoCommitOnCompact ? "on" : "OFF"}`, `recall compress ${cfg.recallCompress ? "on" : "off"}`, `write path ${cfg.writePathAsync ? "async" : "sync"}`];
   report.info(`toggles  ${toggles.join(", ")}`);
@@ -471,17 +483,17 @@ function checkConfig(report, cfg) {
       );
     }
   }
-  report.info(`debug log ${cfg.debug ? "on" : "off"} → ${homeShort(cfg.debugLogPath)}${cfg.debug ? "" : " (set OPENVIKING_DEBUG=1 in Codex's environment to record hook errors)"}`);
+  report.info(`debug log ${cfg.debug ? "on" : "off"} → ${homeShort(cfg.debugLogPath)}${cfg.debug ? "" : ` (set OPENVIKING_DEBUG=1 in ${host.label}'s environment to record hook errors)`}`);
 
   const env = collectEnv();
   if (env.openviking.length) {
     report.info("OPENVIKING_* in this environment", env.openviking.map((e) => `${e.name}=${e.value}`).join("\n"));
-    if (env.openviking.some((e) => e.name === "OPENVIKING_MEMORY_ENABLED")) report.warn("OPENVIKING_MEMORY_ENABLED has no effect on the Codex plugin", "disable it with OPENVIKING_AUTO_RECALL=0 / OPENVIKING_AUTO_CAPTURE=0, or codex plugin remove", "");
+    if (env.openviking.some((e) => e.name === "OPENVIKING_MEMORY_ENABLED")) report.warn("OPENVIKING_MEMORY_ENABLED has no effect on this plugin", "disable it with OPENVIKING_AUTO_RECALL=0 / OPENVIKING_AUTO_CAPTURE=0, or disable the plugin in the host", "");
     if (cfg.credentialSource === "env") report.info("credential env vars override ovcli.conf — edits to the file (and `ov config switch`) do not take effect while they are set");
   } else {
     report.info("no OPENVIKING_* environment variables set");
   }
-  if (env.proxy.length) report.warn(`proxy variables set: ${env.proxy.map((e) => e.name).join(", ")}`, "Node's fetch ignores HTTP(S)_PROXY unless NODE_USE_ENV_PROXY=1 (Node 24+); curl honours them, so curl may succeed while hooks fail", isLoopbackUrl(cfg.baseUrl) ? "harmless for a local server" : "set NODE_USE_ENV_PROXY=1 (or reach the server without the proxy) in the environment that launches Codex");
+  if (env.proxy.length) report.warn(`proxy variables set: ${env.proxy.map((e) => e.name).join(", ")}`, "Node's fetch ignores HTTP(S)_PROXY unless NODE_USE_ENV_PROXY=1 (Node 24+); curl honours them, so curl may succeed while hooks fail", isLoopbackUrl(cfg.baseUrl) ? "harmless for a local server" : `set NODE_USE_ENV_PROXY=1 (or reach the server without the proxy) in the environment that launches ${host.label}`);
   if (env.node.length) report.info(`node TLS/proxy env: ${env.node.map((e) => `${e.name}=${e.value}`).join(", ")}`);
   return { keyInfo, peer, ovConf };
 }
@@ -501,7 +513,7 @@ async function checkConnection(report, cfg, { keyInfo, peer }, opts) {
   return { probes, summary };
 }
 
-function checkActivity(report, cfg, connection) {
+function checkActivity(report, cfg, connection, host) {
   report.section("Recent activity");
   const stateDir = getStateDir();
   let states = [];
@@ -512,7 +524,7 @@ function checkActivity(report, cfg, connection) {
       return { name: n, mtimeMs: st.mtimeMs, data: tryJson(path) };
     }).sort((a, b) => b.mtimeMs - a.mtimeMs);
   } catch {
-    report.info(`no session state dir at ${homeShort(stateDir)} yet — no Codex hook has run (or OPENVIKING_CODEX_STATE_DIR points elsewhere)`);
+    report.info(`no session state dir at ${homeShort(stateDir)} yet — no ${host.label} hook has run (or OPENVIKING_CODEX_STATE_DIR points elsewhere)`);
   }
   if (states.length) {
     const newest = states[0];
@@ -528,7 +540,7 @@ function checkActivity(report, cfg, connection) {
     );
     const orphans = states.filter((s) => s.data?.ovSessionId
       && (ended.has(s.name.slice(0, -5)) || Date.now() - (s.data.lastUpdatedAt || s.mtimeMs) > idleTtl));
-    if (orphans.length > 10) report.warn(`${orphans.length} sessions still uncommitted`, "SessionEnd commits a thread when it exits; the SessionStart sweep retries ended and idle ones, so a growing pile usually means commits are failing", "check the Connection section, then start a new Codex session to trigger the sweep");
+    if (orphans.length > 10) report.warn(`${orphans.length} sessions still uncommitted`, "SessionEnd commits a thread when it exits; the SessionStart sweep retries ended and idle ones, so a growing pile usually means commits are failing", `check the Connection section, then start a new ${host.label} session to trigger the sweep`);
     else if (orphans.length) report.info(`${orphans.length} session(s) waiting for the SessionStart sweep`);
   }
   const profile = tryJson(join(stateDir, "recall-compressor-profile.json"));
@@ -540,18 +552,18 @@ function checkActivity(report, cfg, connection) {
 
   const log = scanDebugLog(cfg.debugLogPath);
   if (!log.exists) {
-    report.info(`no hook log at ${homeShort(cfg.debugLogPath)}${cfg.debug ? " — debug is on but no hook has run since; if a Codex turn ran, hooks are not being spawned (hooks, trust, node)" : ""}`);
+    report.info(`no hook log at ${homeShort(cfg.debugLogPath)}${cfg.debug ? " — debug is on but no hook has run since; if a ${host.label} turn ran, hooks are not being spawned (hooks, trust, node)" : ""}`);
   } else {
     report.info(`hook log ${homeShort(log.path)} — ${fmtBytes(log.size)}, last write ${fmtAge(log.mtimeMs)}, hooks seen: ${log.hooks.join(", ") || "(none)"}`);
     if (log.proxyStart?.data?.mcpUrl) {
       const want = `${cfg.baseUrl.replace(/\/+$/, "")}/mcp`;
-      if (log.proxyStart.data.mcpUrl !== want) report.warn(`MCP proxy last started against ${log.proxyStart.data.mcpUrl} (${log.proxyStart.ts})`, `current config resolves to ${want}; a running proxy only re-reads credentials after a 401/403, never a new url`, "if that proxy is still running, restart Codex; if the line is old, ignore it");
+      if (log.proxyStart.data.mcpUrl !== want) report.warn(`MCP proxy last started against ${log.proxyStart.data.mcpUrl} (${log.proxyStart.ts})`, `current config resolves to ${want}; a running proxy only re-reads credentials after a 401/403, never a new url`, `if that proxy is still running, restart ${host.label}; if the line is old, ignore it`);
       else report.info(`MCP proxy last started against ${log.proxyStart.data.mcpUrl} (${log.proxyStart.ts})`);
     }
     if (log.recentErrors.length) report.warn(`hook errors in the last day of logging (${log.recentErrors.length} shown)`, log.recentErrors.map((e) => `${e.ts} ${e.hook}/${e.stage}: ${e.message}`).join("\n"));
   }
   const ccLog = join(homedir(), ".openviking", "logs", "cc-hooks.log");
-  if (existsPath(ccLog) && !log.exists) report.info("~/.openviking/logs/cc-hooks.log belongs to the Claude Code plugin, not Codex");
+  if (existsPath(ccLog) && !log.exists) report.info("~/.openviking/logs/cc-hooks.log belongs to the upstream Claude Code plugin, not this one");
   if (connection?.summary?.reachable === false) report.info("state files are kept when commits fail, so they replay once the server is back");
 }
 
@@ -560,18 +572,20 @@ function checkActivity(report, cfg, connection) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const report = createReport({ color: opts.color });
-  const envInfo = checkEnvironment(report);
-  checkInstall(report, envInfo);
+  const host = detectHarness({ explicit: opts.harness, pluginRoot: PLUGIN_ROOT });
+  const envInfo = checkEnvironment(report, host);
+  if (host === HARNESSES.claudeCode) checkClaudeCodeInstall(report, { pluginRoot: PLUGIN_ROOT, ...envInfo });
+  else checkInstall(report, envInfo);
   const cfg = loadConfig();
-  const configInfo = checkConfig(report, cfg);
+  const configInfo = checkConfig(report, cfg, host);
   const workspace = checkWorkspace(report);
   const connection = await checkConnection(report, cfg, configInfo, opts);
   const serverHealth = await checkServerHealth(report, { baseUrl: cfg.baseUrl, ovConf: configInfo.ovConf, health: connection?.probes?.health, offline: opts.offline, timeoutMs: opts.timeoutMs });
-  checkActivity(report, cfg, connection);
+  checkActivity(report, cfg, connection, host);
 
   if (opts.json) {
     console.log(JSON.stringify({
-      harness: "codex",
+      harness: host.id,
       pluginRoot: PLUGIN_ROOT,
       generatedAt: new Date().toISOString(),
       resolved: {

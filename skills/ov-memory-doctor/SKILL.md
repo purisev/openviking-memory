@@ -1,7 +1,7 @@
 ---
 name: ov-memory-doctor
 description: >
-  Diagnose and fix the OpenViking memory plugin for Codex on this machine: the plugin
+  Diagnose and fix the OpenViking memory plugin for Codex or Claude Code on this machine: the plugin
   install (enablement, hooks, MCP server), the client configuration
   (ovcli.conf / ov.conf / OPENVIKING_* env) and the connection to the
   OpenViking server (reachability, 401/403, /mcp). Use whenever memory "isn't
@@ -13,14 +13,16 @@ description: >
   "recall 为空", "401".
 ---
 
-# OpenViking Memory Doctor (Codex)
+# OpenViking Memory Doctor (Codex and Claude Code)
 
 Troubleshooting for the OpenViking memory plugin. Three things go
 wrong on a user's machine, each silently:
 
 - **Install** — marketplace registration, `[plugins."openviking-memory@openviking"]`
   and `[features] hooks` (or legacy `plugin_hooks`) in `~/.codex/config.toml`, per-hook trust
-  records, the stdio MCP proxy. When these are wrong, hooks never run and
+  records, the stdio MCP proxy. Under Claude Code: the plugin registry
+  (`claude plugin list`), `enabledPlugins`, `disableAllHooks`, and hook commands
+  rooted at `${CLAUDE_PLUGIN_ROOT}`. When these are wrong, hooks never run and
   nothing is logged anywhere.
 - **Configuration** — `~/.openviking/ovcli.conf`, `~/.openviking/ov.conf` and
   `OPENVIKING_*` environment variables. A malformed file reads as "no config"
@@ -52,6 +54,19 @@ If that directory does not exist, fall back to the marketplace copy reported by
 `codex plugin list --json` (`.installed[] | select(.pluginId == "openviking-memory@openviking") | .source.path`),
 or to a source checkout's `examples/codex-memory-plugin`.
 
+Under Claude Code, run it from the installed copy:
+
+```bash
+PLUGIN_DIR=$(claude plugin list --json | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).find((p) => p.id.startsWith("openviking-memory@") && p.enabled).installPath')
+node "$PLUGIN_DIR/scripts/ov-memory-doctor.mjs"
+```
+
+From a checkout loaded with `claude --plugin-dir`, run `node <checkout>/scripts/ov-memory-doctor.mjs`.
+
+The doctor picks the host from `--harness codex|claude-code`, else from the
+plugin cache it runs from, else from the environment (Claude Code exports
+`CLAUDECODE`); a checkout run from a plain shell is diagnosed as Codex.
+
 Options: `--json` (machine-readable), `--offline` (skip network probes),
 `--timeout <ms>` (per probe, default 5000), `--no-color`.
 
@@ -81,6 +96,12 @@ Work top-down; fix the first ✗ and rerun before chasing the next.
 | `[plugins."…"] enabled = false` / `installed but disabled` | Plugin switched off in config.toml | Set `enabled = true`, restart Codex. |
 | `hooks disabled in [hooks.state]` | A hook was declined at the trust prompt | Remove `enabled = false` from that `[hooks.state."openviking-memory@openviking:hooks/hooks.json:<event>:0:0"]` section; approve the hook again. |
 | `hooks without a trust record yet` | Codex has not yet approved those hooks (fresh install or `hooks.json` changed on update) | Start a Codex session and accept the hook prompt; nothing is wrong. |
+| `Claude Code has no installed openviking-memory plugin` | Not installed; only `claude --plugin-dir` sessions load it | `claude plugin marketplace add purisev/openviking-memory`, then `claude plugin install openviking-memory@openviking-memory`. |
+| `… is installed but disabled` (Claude Code) | Plugin switched off in `enabledPlugins` | `claude plugin enable <id>`, restart Claude Code. |
+| `installed plugin X differs from this copy` (Claude Code) | The doctor was run from a checkout while Claude Code runs the installed version | `claude plugin update <id>`, or rerun from the installed copy (Step 1). |
+| `more than one copy of openviking-memory is enabled` | Two marketplaces or scopes provide the plugin; every hook fires twice | Disable the stale one. |
+| `disableAllHooks is set` | A Claude Code settings file silences every hook | Remove `disableAllHooks` from the listed settings file. |
+| `hook commands are not rooted at ${CLAUDE_PLUGIN_ROOT}` | Claude Code expands no other plugin-root token, so the script path is empty | Update the plugin. |
 | `marketplace 'openviking' is not registered` / root missing | Marketplace removed or its clone deleted | Re-run the installer. |
 | `plugin.json does not declare skills` | Old plugin copy; `$ov-memory-doctor` and the other bundled skills are not loaded | Update the plugin. |
 | `cached plugin X differs from this copy` | The doctor was run from a checkout while Codex runs another version | Rerun from the cache path (Step 1). |

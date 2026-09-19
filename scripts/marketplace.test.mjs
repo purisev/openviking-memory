@@ -146,11 +146,11 @@ test("plugin.json does not describe legacy MCP tool names", () => {
   }
 });
 
-test("hooks.json uses Codex's native ${PLUGIN_ROOT}, not the legacy placeholder", () => {
+test("hooks.json roots every command at ${CLAUDE_PLUGIN_ROOT}, the token both hosts expand", () => {
   const hooks = readFileSync(join(pluginDir, "hooks", "hooks.json"), "utf-8");
-  assert.ok(hooks.includes("${PLUGIN_ROOT}"), "hooks.json should reference ${PLUGIN_ROOT}");
   assert.ok(!hooks.includes("__OPENVIKING_PLUGIN_ROOT__"), "hooks.json should not keep the legacy __OPENVIKING_PLUGIN_ROOT__ placeholder");
-  // every hook command should be rooted at ${PLUGIN_ROOT}
+  // Claude Code expands only ${CLAUDE_PLUGIN_*}; Codex injects CLAUDE_PLUGIN_ROOT
+  // next to PLUGIN_ROOT. A bare ${PLUGIN_ROOT} is empty under Claude Code.
   const parsed = JSON.parse(hooks);
   const commands = Object.values(parsed.hooks || {})
     .flat()
@@ -160,8 +160,8 @@ test("hooks.json uses Codex's native ${PLUGIN_ROOT}, not the legacy placeholder"
   for (const cmd of commands) {
     assert.match(
       cmd,
-      /^node "\$\{PLUGIN_ROOT\}\/scripts\/[^"\n]+\.mjs"$/,
-      `hook command must quote the \${PLUGIN_ROOT} script path: ${cmd}`,
+      /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"\n]+\.mjs"$/,
+      `hook command must quote the \${CLAUDE_PLUGIN_ROOT} script path: ${cmd}`,
     );
   }
 });
@@ -173,6 +173,31 @@ test("hooks.json registers SessionEnd within Codex's clamped budget", () => {
   assert.match(entries[0].command, /scripts\/session-end\.mjs/);
   // Codex clamps SessionEnd to 3s; anything larger is silently ignored.
   assert.ok(entries[0].timeout <= 3, `SessionEnd timeout must be <= 3, got ${entries[0].timeout}`);
+});
+
+test("Claude Code manifest leaves hooks to hooks/hooks.json auto-discovery", () => {
+  const manifest = readJson(join(pluginDir, ".claude-plugin", "plugin.json"));
+  assert.equal(manifest.name, PLUGIN_NAME);
+  // Claude Code always loads hooks/hooks.json; naming it again in the manifest
+  // is rejected as a duplicate, and a second hooks file would run every hook twice.
+  assert.ok(!("hooks" in manifest), "Claude Code manifest must not declare hooks");
+  assert.equal(manifest.skills, "./skills/");
+});
+
+test("Claude Code MCP config roots the proxy at ${CLAUDE_PLUGIN_ROOT}", () => {
+  const manifest = readJson(join(pluginDir, ".claude-plugin", "plugin.json"));
+  const server = readJson(join(pluginDir, manifest.mcpServers)).mcpServers?.[PLUGIN_NAME];
+  assert.ok(server, `Claude Code MCP config must define mcpServers["${PLUGIN_NAME}"]`);
+  assert.equal(server.command, "node");
+  // An absolute script path keeps the proxy independent of the launch cwd.
+  assert.deepEqual(server.args, ["${CLAUDE_PLUGIN_ROOT}/servers/mcp-proxy.mjs"]);
+});
+
+test("Claude Code marketplace installs the plugin from the repository root", () => {
+  const marketplace = readJson(join(pluginDir, ".claude-plugin", "marketplace.json"));
+  const entry = marketplace.plugins.find((p) => p?.name === PLUGIN_NAME);
+  assert.ok(entry, `Claude Code marketplace must list "${PLUGIN_NAME}"`);
+  assert.equal(entry.source, "./");
 });
 
 test(".mcp.json starts the stdio MCP proxy from the plugin root", () => {
