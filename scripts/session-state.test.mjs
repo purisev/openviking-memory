@@ -7,7 +7,7 @@ import test from "node:test";
 const STATE_DIR = await mkdtemp(join(tmpdir(), "ov-session-state-"));
 process.env.OPENVIKING_HOOK_STATE_DIR = STATE_DIR;
 
-const { adoptStateDir, clearEnded, getStateDir, hookEnv, markEnded, readEndedAt, withSessionLock } = await import("./session-state.mjs");
+const { adoptStateDir, clearEnded, getStateDir, hookEnv, markEnded, readEndedAt, sessionOf, withSessionLock } = await import("./session-state.mjs");
 
 async function exists(path) {
   try { await stat(path); return true; } catch { return false; }
@@ -152,4 +152,16 @@ test("adoptStateDir moves a Codex-named directory once and never merges into an 
 
   await mkdir(codexNamed, { recursive: true });
   assert.equal(await adoptStateDir({ env: {}, home }), false);
+});
+
+test("sessionOf: SubagentStop names the subagent's own session and transcript", () => {
+  assert.deepEqual(
+    sessionOf({ hook_event_name: "SubagentStop", session_id: "s1", agent_id: "a7", transcript_path: "/p.jsonl", agent_transcript_path: "/a.jsonl" }),
+    { sessionId: "s1-agent-a7", transcriptPath: "/a.jsonl" },
+  );
+  assert.deepEqual(
+    sessionOf({ hook_event_name: "SessionEnd", session_id: "s1", agent_id: "a7", transcript_path: "/p.jsonl" }),
+    { sessionId: "s1", transcriptPath: "/p.jsonl" },
+  );
+  assert.deepEqual(sessionOf({ hook_event_name: "SubagentStop", session_id: "s1" }), { sessionId: "s1", transcriptPath: null });
 });

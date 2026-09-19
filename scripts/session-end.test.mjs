@@ -585,3 +585,59 @@ test("a worker whose end token no longer matches the marker does nothing", async
     await rm(stateDir, { recursive: true, force: true });
   }
 });
+
+test("SubagentStop captures the subagent into a session of its own and commits it", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "ov-session-end-"));
+  const parentTranscript = join(stateDir, "parent.jsonl");
+  const agentTranscript = join(stateDir, "agent.jsonl");
+  const calls = [];
+  try {
+    await writeState(stateDir, "s1", { capturedTurnCount: 1 });
+    await writeTranscript(parentTranscript, 5);
+    await writeTranscript(agentTranscript, 3);
+    await withMockOpenViking(mockHandler(calls), async (baseUrl) => {
+      await runSessionEnd(
+        {
+          session_id: "s1",
+          transcript_path: parentTranscript,
+          agent_id: "a7",
+          agent_type: "general-purpose",
+          agent_transcript_path: agentTranscript,
+          hook_event_name: "SubagentStop",
+        },
+        workerEnv(baseUrl, stateDir),
+      );
+    });
+
+    const paths = calls.filter((c) => c.method === "POST").map((c) => c.path);
+    assert.ok(paths.includes("/api/v1/sessions/cx-s1-agent-a7/commit"), paths.join("\n"));
+    assert.ok(!paths.some((p) => p.startsWith("/api/v1/sessions/cx-s1/")), "the parent session must stay untouched");
+    assert.equal(sentMessages(calls).length, 3);
+
+    const parent = await readState(stateDir, "s1");
+    assert.equal(parent.capturedTurnCount, 1);
+    const agent = await readState(stateDir, "s1-agent-a7");
+    assert.equal(agent.ovSessionId, null);
+    assert.equal(agent.capturedTurnCount, 3);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("a repeated SubagentStop for the same agent sends nothing twice", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "ov-session-end-"));
+  const agentTranscript = join(stateDir, "agent.jsonl");
+  const calls = [];
+  try {
+    await writeTranscript(agentTranscript, 3);
+    const input = { session_id: "s1", agent_id: "a7", agent_transcript_path: agentTranscript, hook_event_name: "SubagentStop" };
+    await withMockOpenViking(mockHandler(calls), async (baseUrl) => {
+      await runSessionEnd(input, workerEnv(baseUrl, stateDir));
+      await runSessionEnd(input, workerEnv(baseUrl, stateDir));
+    });
+    assert.equal(sentMessages(calls).length, 3);
+    assert.equal(calls.filter((c) => c.path.endsWith("/commit")).length, 1);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});

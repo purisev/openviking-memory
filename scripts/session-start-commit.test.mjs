@@ -719,3 +719,34 @@ test("a marker that disappears under the lock falls back to the idle rule", asyn
     await rm(stateDir, { recursive: true, force: true });
   }
 });
+
+test("compact injects the profile and the archive summary again, and sweeps nothing", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "ov-codex-compact-"));
+  const requests = [];
+  try {
+    const now = Date.now();
+    await writeFile(join(stateDir, "idle.json"), JSON.stringify({
+      codexSessionId: "idle",
+      ovSessionId: "cx-idle",
+      capturedTurnCount: 3,
+      createdAt: now - 3_600_000,
+      lastUpdatedAt: now - 3_600_000,
+    }));
+
+    let result;
+    await withMockOpenViking(profileHandler(requests, { archiveOverview: "Decided to keep one hooks file for both hosts." }), async (baseUrl) => {
+      result = await runSessionStart(
+        { session_id: "compacted", source: "compact", cwd: "/tmp/codex-compact" },
+        { ...baseEnv(baseUrl, stateDir), OPENVIKING_HOOK_IDLE_TTL_MS: "5000" },
+      );
+    });
+
+    const context = result.output.hookSpecificOutput?.additionalContext || "";
+    assert.match(context, /Decided to keep one hooks file for both hosts\./);
+    assert.ok(requests.some((r) => r.path === "/api/v1/sessions/cx-compacted/context"));
+    // Compaction is not a session boundary: an idle session elsewhere stays for the startup sweep.
+    assert.ok(!requests.some((r) => r.method === "POST" && r.path.endsWith("/commit")));
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});

@@ -51,7 +51,7 @@ Codex plugin. Disable features with `OPENVIKING_AUTO_RECALL=0`,
 `OPENVIKING_AUTO_CAPTURE=0`, `OPENVIKING_NO_AUTO_INJECT=1`, or the plugin via
 `codex plugin remove openviking-memory@openviking` / `enabled = false`.
 
-Hook budgets in `hooks/hooks.json`: SessionStart 70s, UserPromptSubmit 130s,
+Hook budgets in `hooks/hooks.json`: SessionStart 70s (plus a 10s `sh` check for node), PreToolUse 5s, SubagentStop 3s, UserPromptSubmit 130s,
 Stop 30s, SessionEnd 3s (Codex clamps it there; the hook detaches a worker),
 PreCompact 60s. `recallTimeoutMs` (default 120000) must stay below
 130s and `captureTimeoutMs` (default 30000) at or below 30s.

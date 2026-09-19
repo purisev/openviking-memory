@@ -69,7 +69,7 @@ const MARKETPLACE = installedMarketplace(readToml(CODEX_CONFIG)) || PUBLISHED_MA
 const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE}`;
 const CACHE_DIR = join(CODEX_DIR, "plugins", "cache", MARKETPLACE, PLUGIN_NAME);
 // <event>:<group>:<hook> positions in hooks/hooks.json, as Codex keys its trust records.
-const HOOK_KEYS = ["session_start:0:0", "session_start:1:0", "user_prompt_submit:0:0", "stop:0:0", "session_end:0:0", "pre_compact:0:0"];
+const HOOK_KEYS = ["session_start:0:0", "session_start:1:0", "user_prompt_submit:0:0", "pre_tool_use:0:0", "stop:0:0", "subagent_stop:0:0", "session_end:0:0", "pre_compact:0:0"];
 const RC_MARKERS = ["# >>> openviking-codex-plugin >>>", "codex-plugin.rc.sh"];
 const REQUIRED_PLUGIN_FILES = [".codex-plugin/plugin.json", "hooks/hooks.json", ".mcp.json", "servers/mcp-proxy.mjs", "scripts/config.mjs", "scripts/auto-recall.mjs", "scripts/auto-capture.mjs", "scripts/session-end.mjs", "scripts/ov-session.mjs"];
 
