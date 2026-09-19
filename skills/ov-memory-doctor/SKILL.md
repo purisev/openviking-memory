@@ -22,7 +22,7 @@ wrong on a user's machine, each silently:
   and `[features] hooks` (or legacy `plugin_hooks`) in `~/.codex/config.toml`, per-hook trust
   records, the stdio MCP proxy. Under Claude Code: the plugin registry
   (`claude plugin list`), `enabledPlugins`, `disableAllHooks`, and hook commands
-  rooted at `${CLAUDE_PLUGIN_ROOT}`. When these are wrong, hooks never run and
+  rooted at the `CLAUDE_PLUGIN_ROOT` token. When these are wrong, hooks never run and
   nothing is logged anywhere.
 - **Configuration** — `~/.openviking/ovcli.conf`, `~/.openviking/ov.conf` and
   `OPENVIKING_*` environment variables. A malformed file reads as "no config"
@@ -101,7 +101,7 @@ Work top-down; fix the first ✗ and rerun before chasing the next.
 | `installed plugin X differs from this copy` (Claude Code) | The doctor was run from a checkout while Claude Code runs the installed version | `claude plugin update <id>`, or rerun from the installed copy (Step 1). |
 | `more than one copy of openviking-memory is enabled` | Two marketplaces or scopes provide the plugin; every hook fires twice | Disable the stale one. |
 | `disableAllHooks is set` | A Claude Code settings file silences every hook | Remove `disableAllHooks` from the listed settings file. |
-| `hook commands are not rooted at ${CLAUDE_PLUGIN_ROOT}` | Claude Code expands no other plugin-root token, so the script path is empty | Update the plugin. |
+| `hook commands are not rooted at …` | Claude Code expands only the `CLAUDE_PLUGIN_ROOT` token, so the script path is empty | Update the plugin. |
 | `marketplace 'openviking' is not registered` / root missing | Marketplace removed or its clone deleted | Re-run the installer. |
 | `plugin.json does not declare skills` | Old plugin copy; `$ov-memory-doctor` and the other bundled skills are not loaded | Update the plugin. |
 | `cached plugin X differs from this copy` | The doctor was run from a checkout while Codex runs another version | Rerun from the cache path (Step 1). |

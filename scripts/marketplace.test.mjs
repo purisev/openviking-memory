@@ -12,7 +12,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -182,6 +182,17 @@ test("Claude Code manifest leaves hooks to hooks/hooks.json auto-discovery", () 
   // is rejected as a duplicate, and a second hooks file would run every hook twice.
   assert.ok(!("hooks" in manifest), "Claude Code manifest must not declare hooks");
   assert.equal(manifest.skills, "./skills/");
+});
+
+test("skill text never spells a token that Claude Code expands", () => {
+  // Claude Code replaces ${CLAUDE_PLUGIN_ROOT} in skill text with the install
+  // path, so prose that means the token itself would show a path instead.
+  const skillsDir = join(pluginDir, "skills");
+  const files = readdirSync(skillsDir, { recursive: true }).filter((rel) => rel.endsWith(".md"));
+  assert.ok(files.length > 0);
+  for (const rel of files) {
+    assert.ok(!readFileSync(join(skillsDir, rel), "utf-8").includes("${CLAUDE_PLUGIN_ROOT}"), `skills/${rel} spells \${CLAUDE_PLUGIN_ROOT}`);
+  }
 });
 
 test("Claude Code MCP config roots the proxy at ${CLAUDE_PLUGIN_ROOT}", () => {
